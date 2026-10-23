@@ -1,0 +1,87 @@
+{
+  "units": [
+    {
+      "key": "custom_cyber_valkyrie",
+      "id": 901,
+      "name": "自製・波動巨神貓",
+      "base_rig": "008_f",
+      "hp": 4500,
+      "ap": 650,
+      "speed": 12.0,
+      "range": 180.0,
+      "cost": 600,
+      "cd_frames": 150,
+      "kb_count": 2,
+      "width": 45.0,
+      "is_area_attack": true,
+      "pre_atk_frames": 18,
+      "tba_frames": 35,
+      "attack_anim_frames": 36,
+      "backswing_frames": 18,
+      "traits": [],
+      "target_traits": ["red", "floating"],
+      "abilities": {
+        "strong": true,
+        "wave_prob": 100,
+        "wave_lvl": 3,
+        "survive_prob": 100,
+        "kb_prob": 40
+      }
+    },
+    {
+      "key": "custom_frost_lizard",
+      "id": 902,
+      "name": "自製・冰晶龍貓",
+      "base_rig": "007_f",
+      "hp": 2200,
+      "ap": 480,
+      "speed": 14.0,
+      "range": 380.0,
+      "cost": 450,
+      "cd_frames": 120,
+      "kb_count": 3,
+      "width": 36.0,
+      "is_area_attack": true,
+      "pre_atk_frames": 15,
+      "tba_frames": 40,
+      "attack_anim_frames": 32,
+      "backswing_frames": 17,
+      "traits": [],
+      "target_traits": ["red", "floating", "alien"],
+      "abilities": {
+        "freeze_prob": 60,
+        "freeze_dur": 60,
+        "crit_prob": 25
+      }
+    },
+    {
+      "key": "custom_dark_emperor",
+      "id": 903,
+      "name": "自製・闇黑帝王",
+      "base_rig": "014_e",
+      "hp": 5200,
+      "ap": 720,
+      "speed": 9.0,
+      "range": 240.0,
+      "cost": 750,
+      "cd_frames": 180,
+      "kb_count": 2,
+      "width": 50.0,
+      "is_area_attack": true,
+      "pre_atk_frames": 20,
+      "tba_frames": 45,
+      "attack_anim_frames": 40,
+      "backswing_frames": 20,
+      "traits": ["black"],
+      "target_traits": ["white", "red"],
+      "abilities": {
+        "strengthen_hp_pct": 50,
+        "strengthen_boost_pct": 100,
+        "slow_prob": 50,
+        "slow_dur": 75,
+        "wave_prob": 50,
+        "wave_lvl": 2
+      }
+    }
+  ]
+}

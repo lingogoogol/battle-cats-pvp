@@ -1,0 +1,56 @@
+{
+  "version": "1.0.0",
+  "id": 3,
+  "name": "第 3 關：中國 (China)",
+  "length": 3400,
+  "cat_castle_hp": 1000,
+  "enemy_castle_hp": 500,
+  "max_enemies": 30,
+  "spawns": [
+    {
+      "enemy_key": "doge",
+      "count": 3,
+      "start_frame": 10,
+      "min_interval": 400,
+      "max_interval": 400,
+      "mag_pct": 100,
+      "castle_hp_pct": 0
+    },
+    {
+      "enemy_key": "snache",
+      "count": 3,
+      "start_frame": 150,
+      "min_interval": 400,
+      "max_interval": 400,
+      "mag_pct": 100,
+      "castle_hp_pct": 0
+    },
+    {
+      "enemy_key": "baa_baa",
+      "count": 2,
+      "start_frame": 250,
+      "min_interval": 250,
+      "max_interval": 250,
+      "mag_pct": 100,
+      "castle_hp_pct": 0
+    },
+    {
+      "enemy_key": "snache",
+      "count": 2,
+      "start_frame": 450,
+      "min_interval": 200,
+      "max_interval": 200,
+      "mag_pct": 100,
+      "castle_hp_pct": 0
+    },
+    {
+      "enemy_key": "ms_sign",
+      "count": 0,
+      "start_frame": 13500,
+      "min_interval": 13500,
+      "max_interval": 13500,
+      "mag_pct": 100,
+      "castle_hp_pct": 0
+    }
+  ]
+}

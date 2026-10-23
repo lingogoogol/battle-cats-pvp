@@ -1,0 +1,107 @@
+{
+  "stage": "stage_01_korea (stage00.csv)",
+  "total_frames": 561,
+  "duration_seconds": 18.7,
+  "final_cat_castle_hp": 1000,
+  "final_enemy_castle_hp": 0,
+  "winner": "TEAM_CAT",
+  "victory": true,
+  "total_combat_events": 19,
+  "events_sample": [
+    {
+      "frame": 0,
+      "event": "WORKER_CAT_UPGRADE",
+      "lvl": 2
+    },
+    {
+      "frame": 0,
+      "event": "CAT_DEPLOYED",
+      "slot": 0
+    },
+    {
+      "frame": 34,
+      "event": "CAT_DEPLOYED",
+      "slot": 1
+    },
+    {
+      "frame": 75,
+      "event": "CAT_DEPLOYED",
+      "slot": 0
+    },
+    {
+      "frame": 117,
+      "event": "WORKER_CAT_UPGRADE",
+      "lvl": 3
+    },
+    {
+      "frame": 150,
+      "event": "CAT_DEPLOYED",
+      "slot": 0
+    },
+    {
+      "frame": 155,
+      "event": "CAT_DEPLOYED",
+      "slot": 1
+    },
+    {
+      "frame": 205,
+      "event": "CAT_DEPLOYED",
+      "slot": 2
+    },
+    {
+      "frame": 225,
+      "event": "CAT_DEPLOYED",
+      "slot": 0
+    },
+    {
+      "frame": 275,
+      "event": "CAT_DEPLOYED",
+      "slot": 1
+    },
+    {
+      "frame": 300,
+      "event": "CAT_DEPLOYED",
+      "slot": 0
+    },
+    {
+      "frame": 310,
+      "event": "CAT_DEPLOYED",
+      "slot": 2
+    },
+    {
+      "frame": 375,
+      "event": "CAT_DEPLOYED",
+      "slot": 0
+    },
+    {
+      "frame": 395,
+      "event": "CAT_DEPLOYED",
+      "slot": 1
+    },
+    {
+      "frame": 415,
+      "event": "CAT_DEPLOYED",
+      "slot": 2
+    },
+    {
+      "frame": 450,
+      "event": "CAT_DEPLOYED",
+      "slot": 0
+    },
+    {
+      "frame": 505,
+      "event": "WORKER_CAT_UPGRADE",
+      "lvl": 4
+    },
+    {
+      "frame": 525,
+      "event": "CAT_DEPLOYED",
+      "slot": 1
+    },
+    {
+      "frame": 535,
+      "event": "CAT_DEPLOYED",
+      "slot": 0
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0",
+  "id": 1,
+  "name": "第 1 關：韓國 (Korea)",
+  "length": 3000,
+  "cat_castle_hp": 1000,
+  "enemy_castle_hp": 500,
+  "max_enemies": 3,
+  "spawns": [
+    {
+      "enemy_key": "doge",
+      "count": 1,
+      "start_frame": 0,
+      "min_interval": 60,
+      "max_interval": 80,
+      "mag_pct": 100,
+      "castle_hp_pct": 0
+    },
+    {
+      "enemy_key": "doge",
+      "count": 0,
+      "start_frame": 300,
+      "min_interval": 90,
+      "max_interval": 150,
+      "mag_pct": 100,
+      "castle_hp_pct": 0
+    },
+    {
+      "enemy_key": "ms_sign",
+      "count": 0,
+      "start_frame": 13500,
+      "min_interval": 13500,
+      "max_interval": 13500,
+      "mag_pct": 100,
+      "castle_hp_pct": 0
+    }
+  ]
+}

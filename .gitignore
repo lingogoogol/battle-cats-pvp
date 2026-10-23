@@ -1,0 +1,54 @@
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Python Bytecode & Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+.pytest_cache/
+
+# Large APKs, XAPKs, DEX binaries (>100MB / raw decompilations)
+catAPKPure.xapk
+extracted_xapk/
+decompiled_src/
+classes*.dex
+*.dex
+*.apk
+*.xapk
+
+# Raw Encrypted Server Pack Archives & Reverse Engineering Tools
+server_assets/
+tools/
+temp/
+visual_audit/
+phase7/ghidra_proj/
+
+# Submodules / Separate Tool Checkouts
+rea/
+
+# Binaries & Shared Libraries
+*.exe
+*.dll
+*.so
+
+# Temporary Screenshots, Test Crops & Logs
+*.log
+check_*.png
+crop_*.png
+test_*.png
+tab4_*.png
+cut*.png
+user_screenshot_analyzed.png
+wc_resized.png
+ec_resized.png
+game_project/screenshots/*.png
+
+# OS & IDE Settings
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

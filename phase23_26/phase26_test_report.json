@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-10-22 22:19:06",
+  "total": 5,
+  "passed": 5,
+  "failed": 0,
+  "elapsed_seconds": 4.505853176116943,
+  "suites": {
+    "Official_Data_Parity": {
+      "passed": true,
+      "message": "Stage00 (W=3000, BaseHP=500) & Unit001~003 match official CSVs",
+      "meta": {
+        "official_width": 3000,
+        "official_base_hp": 500,
+        "cat_hp": 100,
+        "tank_hp": 400,
+        "axe_hp": 200
+      }
+    },
+    "Animation_Playback_Integrity": {
+      "passed": true,
+      "message": "Basic Cat (16f) and Enemy 186 (4 tracks, 91 bones) rendered with 0 errors",
+      "meta": {}
+    },
+    "Native_AArch64_Differential": {
+      "passed": true,
+      "message": "libnative-lib.so AArch64 binary execution verified: AttackTimer=45",
+      "meta": {}
+    },
+    "UI_State_Lifecycle": {
+      "passed": true,
+      "message": "Menu(True) -> StageSelect(True) -> Settlement(True) transitions valid",
+      "meta": {}
+    },
+    "Live_Korea_Match_Simulation": {
+      "passed": true,
+      "message": "Korea stage cleared at frame 561 (18.7s), Enemy Castle HP: 0/500",
+      "meta": {
+        "total_frames": 561,
+        "winner": "CAT",
+        "enemy_hp": 0
+      }
+    }
+  }
+}

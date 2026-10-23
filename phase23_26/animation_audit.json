@@ -1,0 +1,85 @@
+{
+  "Basic_Cat": {
+    "name": "Basic_Cat",
+    "png": {
+      "width": 174,
+      "height": 59,
+      "mode": "RGBA",
+      "path": "E:\\rea\\game_assets\\recovered_assets\\download_cat\\download_char_000.png"
+    },
+    "cuts": {
+      "total_cuts": 4,
+      "out_of_bounds": 1,
+      "valid": false
+    },
+    "model": {
+      "part_count": 2,
+      "has_cycle": false,
+      "valid": true
+    },
+    "animations": {
+      "walk": {
+        "status": "VERIFIED_AUTHENTIC",
+        "tracks": 1,
+        "max_frame": 16,
+        "path": "E:\\rea\\game_assets\\recovered_assets\\download_cat\\download_char_000_walkR.maanim"
+      },
+      "idle": {
+        "status": "BLOCKED_MISSING_FILE"
+      },
+      "attack": {
+        "status": "BLOCKED_MISSING_FILE"
+      }
+    }
+  },
+  "Enemy_186": {
+    "name": "Enemy_186",
+    "png": {
+      "width": 502,
+      "height": 305,
+      "mode": "P",
+      "path": "E:\\rea\\phase23_26\\enemy_186\\186_e.png"
+    },
+    "cuts": {
+      "total_cuts": 45,
+      "out_of_bounds": 0,
+      "valid": true
+    },
+    "model": {
+      "part_count": 91,
+      "has_cycle": false,
+      "valid": true
+    },
+    "animations": {
+      "walk": {
+        "status": "VERIFIED_AUTHENTIC",
+        "tracks": 96,
+        "max_frame": 16,
+        "path": "E:\\rea\\phase23_26\\enemy_186\\186_e00.maanim"
+      },
+      "idle": {
+        "status": "VERIFIED_AUTHENTIC",
+        "tracks": 42,
+        "max_frame": 16,
+        "path": "E:\\rea\\phase23_26\\enemy_186\\186_e01.maanim"
+      },
+      "attack": {
+        "status": "VERIFIED_AUTHENTIC",
+        "tracks": 154,
+        "max_frame": 49,
+        "path": "E:\\rea\\phase23_26\\enemy_186\\186_e02.maanim"
+      },
+      "kb": {
+        "status": "VERIFIED_AUTHENTIC",
+        "tracks": 50,
+        "max_frame": 1,
+        "path": "E:\\rea\\phase23_26\\enemy_186\\186_e03.maanim"
+      }
+    }
+  },
+  "Doge_000_e": {
+    "name": "Doge_000_e",
+    "status": "BLOCKED_AWAITING_INPUT",
+    "reason": "Official assets (000_e.png, 000_e.imgcut, 000_e.mamodel, 000_e00~03.maanim) reside in ImageServer.pack (CDN download) and are not packaged inside offline local APK packs."
+  }
+}

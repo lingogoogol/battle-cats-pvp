@@ -1,0 +1,22 @@
+﻿
+--- Running Multi-Step Combat Integration Simulation ---
+[Frame 043] ATTACK: Team 0 Slot 1 attacked Opponent Team 1 Slot 1 for 400 dmg (Remaining HP=200, Killed=False, KB=True)
+[Frame 044] Team 1 Slot 1 Knockback active: remaining=14
+[Frame 045] Team 1 Slot 1 Knockback active: remaining=13
+[Frame 046] Team 1 Slot 1 Knockback active: remaining=12
+[Frame 047] Team 1 Slot 1 Knockback active: remaining=11
+[Frame 048] Team 1 Slot 1 Knockback active: remaining=10
+[Frame 049] Team 1 Slot 1 Knockback active: remaining=9
+[Frame 050] Team 1 Slot 1 Knockback active: remaining=8
+[Frame 051] Team 1 Slot 1 Knockback active: remaining=7
+[Frame 052] Team 1 Slot 1 Knockback active: remaining=6
+[Frame 053] Team 1 Slot 1 Knockback active: remaining=5
+[Frame 054] Team 1 Slot 1 Knockback active: remaining=4
+[Frame 055] Team 1 Slot 1 Knockback active: remaining=3
+[Frame 056] Team 1 Slot 1 Knockback active: remaining=2
+[Frame 057] Team 1 Slot 1 Knockback active: remaining=1
+[Frame 058] Team 1 Slot 1 Knockback active: remaining=0
+[Frame 062] ATTACK: Team 1 Slot 1 attacked Opponent Team 0 Slot 1 for 150 dmg (Remaining HP=1350, Killed=False, KB=False)
+[Frame 064] ATTACK: Team 0 Slot 1 attacked Opponent Team 1 Slot 1 for 400 dmg (Remaining HP=0, Killed=True, KB=False)
+[Frame 088] ATTACK: Team 0 Slot 1 attacked Opponent Team 1 Slot 0 for 400 dmg (Remaining HP=99600, Killed=False, KB=False)
+Simulation Test Passed! Final Enemy Castle HP: 99600 / 100000

@@ -1,0 +1,18 @@
+﻿[1] SO SHA-256: 6f821c3cba94f96d34e1b2c501a482c0887daf71e68328722a58a456cb6baa0f
+[2] PT_LOAD Segments Parsed: 3
+[3-4] Snippet magic_div_0x4c6800.bin: VMA=0x4c6800 -> Offset=0x4c6800 (32 bytes) Match=True
+[3-4] Snippet hp_read_0x959894.bin: VMA=0x959894 -> Offset=0x959894 (28 bytes) Match=True
+[3-4] Snippet hp_write_0x9598dc.bin: VMA=0x9598dc -> Offset=0x9598dc (28 bytes) Match=True
+[5-8] Differential Test Results:
+      - Magic Div: Fixed=17/17, Fuzz=1000/1000
+      - HP Read:   48/48
+      - HP Write:  32/32
+
+[9-10] Executing Mutation Testing...
+      - Mutate Magic Constant (0x10624dd3 -> 0x10624dd2): Native=300, Mutated=299 -> DETECTED (PASS)
+      - Mutate Shift Count (38 -> 37): Native=100, Mutated=200 -> DETECTED (PASS)
+      - Mutate Team Stride (51000 -> 50996): Native=45000, Mutated=0 -> DETECTED (PASS)
+      - Mutate Unit Stride (1000 -> 1004): Native=12000, Mutated=0 -> DETECTED (PASS)
+      - Remove Sign Bit Correction on Negative Division: Native=-1, Mutated=-2 -> DETECTED (PASS)
+
+[+] Independent Recheck Complete. All mutations detected: True

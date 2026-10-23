@@ -1,0 +1,8 @@
+# Core Game & Web Server Dependencies
+pygame>=2.6.0
+Pillow>=10.0.0
+pycryptodome>=3.18.0
+
+# Optional Reverse Engineering & Unicorn Emulation Verification Tools:
+# capstone>=5.0.0
+# unicorn>=2.0.0

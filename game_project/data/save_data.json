@@ -1,0 +1,64 @@
+{
+  "version": "1.0.0",
+  "xp": 1400,
+  "cat_food": 30,
+  "leadership": 100,
+  "max_leadership": 100,
+  "cleared_stages": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "unlocked_cats": [
+    "cat",
+    "tank_cat",
+    "axe_cat",
+    "cow_cat",
+    "lizard_cat",
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "cat_levels": {
+    "0": 5,
+    "1": 1,
+    "2": 1,
+    "3": 1,
+    "4": 1,
+    "5": 1,
+    "6": 1,
+    "7": 1,
+    "8": 1
+  },
+  "formation_deck": [
+    1,
+    0,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    8
+  ],
+  "base_levels": {
+    "worker_cat": 1,
+    "wallet": 1,
+    "cannon_power": 1,
+    "cannon_charge": 1,
+    "castle_hp": 1
+  },
+  "sound_enabled": true,
+  "volume": 0.8,
+  "total_victories": 582,
+  "high_scores": {}
+}

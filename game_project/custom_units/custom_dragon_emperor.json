@@ -1,0 +1,21 @@
+{
+  "id": "custom_dragon_emperor",
+  "name": "自製蒼龍皇",
+  "base_rig": "007_c",
+  "scale": 0.72,
+  "is_area_attack": true,
+  "hp": 18000,
+  "ap": 3200,
+  "range": 320,
+  "speed": 22,
+  "cost": 350,
+  "cd_frames": 30,
+  "abilities": {
+    "wave_prob": 100,
+    "wave_lvl": 3,
+    "crit_prob": 40,
+    "freeze_prob": 50,
+    "freeze_frames": 60
+  },
+  "key": "custom_dragon_emperor"
+}

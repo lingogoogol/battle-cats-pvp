@@ -1,0 +1,81 @@
+{
+  "version": "1.0.0",
+  "units": {
+    "doge": {
+      "id": 101,
+      "name": "賈修狗 (Doge)",
+      "hp": 90,
+      "attack_power": 18,
+      "attack_range": 110,
+      "speed": 10,
+      "attack_interval": 30,
+      "attack_windup": 8,
+      "knockback_count": 3,
+      "target_type": "single",
+      "money_drop": 35,
+      "color": [
+        220,
+        190,
+        150
+      ],
+      "radius": 18
+    },
+    "snache": {
+      "id": 102,
+      "name": "蛇蛇 (Snache)",
+      "hp": 75,
+      "attack_power": 15,
+      "attack_range": 90,
+      "speed": 15,
+      "attack_interval": 20,
+      "attack_windup": 6,
+      "knockback_count": 3,
+      "target_type": "single",
+      "money_drop": 25,
+      "color": [
+        160,
+        210,
+        160
+      ],
+      "radius": 16
+    },
+    "baa_baa": {
+      "id": 103,
+      "name": "綿羊 (Baa Baa)",
+      "hp": 220,
+      "attack_power": 30,
+      "attack_range": 100,
+      "speed": 8,
+      "attack_interval": 45,
+      "attack_windup": 12,
+      "knockback_count": 2,
+      "target_type": "area",
+      "money_drop": 80,
+      "color": [
+        240,
+        240,
+        230
+      ],
+      "radius": 22
+    },
+    "hippoe": {
+      "id": 104,
+      "name": "河馬伯 (Hippoe)",
+      "hp": 900,
+      "attack_power": 45,
+      "attack_range": 160,
+      "speed": 6,
+      "attack_interval": 50,
+      "attack_windup": 15,
+      "knockback_count": 1,
+      "target_type": "area",
+      "money_drop": 250,
+      "color": [
+        200,
+        180,
+        210
+      ],
+      "radius": 32
+    }
+  }
+}

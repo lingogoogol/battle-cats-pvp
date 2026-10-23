@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-10-15 18:53:37",
+  "boundary_tests": {
+    "slot_limit_enforced": true,
+    "slot_51_rejected": true,
+    "zero_money_rejected": true,
+    "negative_pos_clamped": true,
+    "negative_castle_hp_triggers_victory": true
+  },
+  "stability_test": {
+    "frames_executed": 1000,
+    "total_time_seconds": 0.5241,
+    "simulation_fps": 1907.88,
+    "errors": 0,
+    "events_processed": 406,
+    "mem_before_mb": 0.0,
+    "mem_after_mb": 0.02,
+    "mem_delta_mb": 0.02
+  },
+  "performance_benchmarks": {
+    "10_entities": {
+      "entity_count": 10,
+      "sim_ms_per_tick": 0.037,
+      "render_ms_per_frame": 0.559,
+      "total_ms_per_frame": 0.596,
+      "achievable_fps": 1678.7
+    },
+    "25_entities": {
+      "entity_count": 25,
+      "sim_ms_per_tick": 0.086,
+      "render_ms_per_frame": 0.759,
+      "total_ms_per_frame": 0.845,
+      "achievable_fps": 1183.7
+    },
+    "50_entities": {
+      "entity_count": 50,
+      "sim_ms_per_tick": 0.406,
+      "render_ms_per_frame": 1.156,
+      "total_ms_per_frame": 1.562,
+      "achievable_fps": 640.3
+    },
+    "80_entities": {
+      "entity_count": 80,
+      "sim_ms_per_tick": 0.992,
+      "render_ms_per_frame": 1.439,
+      "total_ms_per_frame": 2.431,
+      "achievable_fps": 411.4
+    }
+  }
+}

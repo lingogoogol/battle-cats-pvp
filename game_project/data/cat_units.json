@@ -1,0 +1,110 @@
+{
+  "version": "1.0.0",
+  "units": {
+    "cat": {
+      "id": 1,
+      "name": "普通貓 (Cat)",
+      "cost": 50,
+      "cooldown_frames": 60,
+      "hp": 100,
+      "attack_power": 20,
+      "attack_range": 140,
+      "speed": 10,
+      "attack_interval": 37,
+      "attack_windup": 8,
+      "knockback_count": 3,
+      "target_type": "single",
+      "color": [
+        245,
+        245,
+        245
+      ],
+      "radius": 18,
+      "description": "基本肉盾與初級攻擊單位，造價低廉且冷卻迅速。"
+    },
+    "tank_cat": {
+      "id": 2,
+      "name": "坦克貓 (Tank Cat)",
+      "cost": 100,
+      "cooldown_frames": 60,
+      "hp": 400,
+      "attack_power": 10,
+      "attack_range": 110,
+      "speed": 8,
+      "attack_interval": 67,
+      "attack_windup": 8,
+      "knockback_count": 1,
+      "target_type": "area",
+      "color": [
+        230,
+        235,
+        240
+      ],
+      "radius": 24,
+      "description": "高體力防禦型肉盾，範圍攻擊，擊退次數僅 1 次，能有效抵擋敵方推進。"
+    },
+    "axe_cat": {
+      "id": 3,
+      "name": "戰斧貓 (Axe Cat)",
+      "cost": 200,
+      "cooldown_frames": 90,
+      "hp": 200,
+      "attack_power": 25,
+      "attack_range": 150,
+      "speed": 12,
+      "attack_interval": 30,
+      "attack_windup": 10,
+      "knockback_count": 3,
+      "target_type": "single",
+      "color": [
+        240,
+        210,
+        210
+      ],
+      "radius": 20,
+      "description": "近戰戰鬥專家，具備良好輸出與血量。"
+    },
+    "cow_cat": {
+      "id": 4,
+      "name": "牛貓 (Cow Cat)",
+      "cost": 500,
+      "cooldown_frames": 120,
+      "hp": 250,
+      "attack_power": 30,
+      "attack_range": 130,
+      "speed": 28,
+      "attack_interval": 12,
+      "attack_windup": 5,
+      "knockback_count": 5,
+      "target_type": "single",
+      "color": [
+        240,
+        240,
+        240
+      ],
+      "radius": 22,
+      "description": "超高速突擊單位，能迅速填補戰線並以極快攻頻撕裂敵陣。"
+    },
+    "lizard_cat": {
+      "id": 5,
+      "name": "蜥蜴貓 (Lizard Cat)",
+      "cost": 1000,
+      "cooldown_frames": 240,
+      "hp": 500,
+      "attack_power": 180,
+      "attack_range": 400,
+      "speed": 10,
+      "attack_interval": 110,
+      "attack_windup": 18,
+      "knockback_count": 3,
+      "target_type": "single",
+      "color": [
+        200,
+        240,
+        200
+      ],
+      "radius": 22,
+      "description": "超長射程單體狙擊單位，於後方提供巨大火力支援。"
+    }
+  }
+}

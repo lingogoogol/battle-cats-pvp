@@ -1,0 +1,11 @@
+﻿  [PASS] AddKnockback: (0, 1, 10, -1) -> Native=9, Py=9
+  [PASS] AddKnockback: (0, 1, 1, -1) -> Native=0, Py=0
+  [PASS] AddKnockback: (0, 1, 0, 15) -> Native=15, Py=15
+  [PASS] AddKnockback: (1, 5, 20, -1) -> Native=19, Py=19
+  [PASS] AddKnockback: (1, 50, 0, 30) -> Native=30, Py=30
+  [PASS] AddKnockback: (0, 0, 0, 0) -> Native=0, Py=0
+  [PASS] AddKnockback: (1, 10, 5, -5) -> Native=0, Py=0
+  [PASS] AddKnockback: (0, 25, -10, 5) -> Native=-5, Py=-5
+  [PASS] CanMove Branch A (flag_95c=0) -> w0=0 (Stopped)
+  [PASS] CanMove Branch B (flag_95c=1, flag_aec=0) -> w0=1 (Normal Forward)
+  [PASS] CanMove Branch C (flag_95c=1, flag_aec=1) -> w0=2 (Special / Slow)

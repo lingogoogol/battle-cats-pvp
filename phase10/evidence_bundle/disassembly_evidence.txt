@@ -1,0 +1,57 @@
+Phase 10 — Binary Disassembly Evidence Bundle
+==============================================
+
+--- Block: magic_div_0x4c6800.bin (VMA: 0x004c6800, Size: 32 bytes) ---
+0x004c6800:  097c171b    mul       w9, w0, w23
+0x004c6804:  68ba8952    mov       w8, #0x4dd3
+0x004c6808:  21008052    mov       w1, #1
+0x004c680c:  480ca272    movk      w8, #0x1062, lsl #16
+0x004c6810:  287d289b    smull     x8, w9, w8
+0x004c6814:  09fd7fd3    lsr       x9, x8, #0x3f
+0x004c6818:  08fd6693    asr       x8, x8, #0x26
+0x004c681c:  1701090b    add       w23, w8, w9
+
+--- Block: hp_read_0x959894.bin (VMA: 0x00959894, Size: 28 bytes) ---
+0x00959894:  08e79852    mov       w8, #0xc738
+0x00959898:  097d8052    mov       w9, #0x3e8
+0x0095989c:  8802289b    smaddl    x8, w20, w8, x0
+0x009598a0:  6822299b    smaddl    x8, w19, w9, x8
+0x009598a4:  092c8752    mov       w9, #0x3960
+0x009598a8:  0901a072    movk      w9, #8, lsl #16
+0x009598ac:  006969b8    ldr       w0, [x8, x9]
+
+--- Block: hp_write_0x9598dc.bin (VMA: 0x009598dc, Size: 28 bytes) ---
+0x009598dc:  08e79852    mov       w8, #0xc738
+0x009598e0:  097d8052    mov       w9, #0x3e8
+0x009598e4:  a802289b    smaddl    x8, w21, w8, x0
+0x009598e8:  8822299b    smaddl    x8, w20, w9, x8
+0x009598ec:  092c8752    mov       w9, #0x3960
+0x009598f0:  0901a072    movk      w9, #8, lsl #16
+0x009598f4:  136929b8    str       w19, [x8, x9]
+
+--- Block: movement_loop_0x5c8c70.bin (VMA: 0x005c8c70, Size: 96 bytes) ---
+0x005c8c70:  f3031f2a    mov       w19, wzr
+0x005c8c74:  05000014    b         #0x5c8c88
+0x005c8c78:  33008052    mov       w19, #1
+0x005c8c7c:  18070011    add       w24, w24, #1
+0x005c8c80:  1fcf0071    cmp       w24, #0x33
+0x005c8c84:  00020054    b.eq      #0x5c8cc4
+0x005c8c88:  e0cb40f9    ldr       x0, [sp, #0x190]
+0x005c8c8c:  e1031f2a    mov       w1, wzr
+0x005c8c90:  e203172a    mov       w2, w23
+0x005c8c94:  e303182a    mov       w3, w24
+0x005c8c98:  e4031f2a    mov       w4, wzr
+0x005c8c9c:  fa140094    bl        #0x5ce084
+0x005c8ca0:  e0feff34    cbz       w0, #0x5c8c7c
+0x005c8ca4:  e0031f2a    mov       w0, wzr
+0x005c8ca8:  e103172a    mov       w1, w23
+0x005c8cac:  d1420e94    bl        #0x9597f0
+0x005c8cb0:  40feff35    cbnz      w0, #0x5c8c78
+0x005c8cb4:  e103172a    mov       w1, w23
+0x005c8cb8:  ec430e94    bl        #0x959c68
+0x005c8cbc:  e0fdff34    cbz       w0, #0x5c8c78
+0x005c8cc0:  17010014    b         #0x5c911c
+0x005c8cc4:  53f4ff35    cbnz      w19, #0x5c8b4c
+0x005c8cc8:  e0031f2a    mov       w0, wzr
+0x005c8ccc:  e103172a    mov       w1, w23
+

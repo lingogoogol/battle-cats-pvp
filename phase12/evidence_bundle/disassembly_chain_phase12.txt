@@ -1,0 +1,97 @@
+Phase 12 — Native Chain Functions Disassembly Bundle
+====================================================
+
+=== setpos_0x959830.bin (VMA: 0x00959830, Size: 76 bytes) ===
+0x00959830:  fd7bbda9    stp       x29, x30, [sp, #-0x30]!
+0x00959834:  f50b00f9    str       x21, [sp, #0x10]
+0x00959838:  f44f02a9    stp       x20, x19, [sp, #0x20]
+0x0095983c:  fd030091    mov       x29, sp
+0x00959840:  f303022a    mov       w19, w2
+0x00959844:  f403012a    mov       w20, w1
+0x00959848:  f503002a    mov       w21, w0
+0x0095984c:  bf8ff697    bl        #0x6fd748
+0x00959850:  08e79852    mov       w8, #0xc738
+0x00959854:  097d8052    mov       w9, #0x3e8
+0x00959858:  a802289b    smaddl    x8, w21, w8, x0
+0x0095985c:  8822299b    smaddl    x8, w20, w9, x8
+0x00959860:  092a8752    mov       w9, #0x3950
+0x00959864:  0901a072    movk      w9, #8, lsl #16
+0x00959868:  136929b8    str       w19, [x8, x9]
+0x0095986c:  f44f42a9    ldp       x20, x19, [sp, #0x20]
+0x00959870:  f50b40f9    ldr       x21, [sp, #0x10]
+0x00959874:  fd7bc3a8    ldp       x29, x30, [sp], #0x30
+0x00959878:  c0035fd6    ret       
+
+=== addkb_0x959cf4.bin (VMA: 0x00959cf4, Size: 84 bytes) ===
+0x00959cf4:  fd7bbda9    stp       x29, x30, [sp, #-0x30]!
+0x00959cf8:  f50b00f9    str       x21, [sp, #0x10]
+0x00959cfc:  f44f02a9    stp       x20, x19, [sp, #0x20]
+0x00959d00:  fd030091    mov       x29, sp
+0x00959d04:  f303022a    mov       w19, w2
+0x00959d08:  f403012a    mov       w20, w1
+0x00959d0c:  f503002a    mov       w21, w0
+0x00959d10:  8e8ef697    bl        #0x6fd748
+0x00959d14:  08e79852    mov       w8, #0xc738
+0x00959d18:  097d8052    mov       w9, #0x3e8
+0x00959d1c:  a802289b    smaddl    x8, w21, w8, x0
+0x00959d20:  8822299b    smaddl    x8, w20, w9, x8
+0x00959d24:  895a8752    mov       w9, #0x3ad4
+0x00959d28:  0901a072    movk      w9, #8, lsl #16
+0x00959d2c:  0a6969b8    ldr       w10, [x8, x9]
+0x00959d30:  4a01130b    add       w10, w10, w19
+0x00959d34:  0a6929b8    str       w10, [x8, x9]
+0x00959d38:  f44f42a9    ldp       x20, x19, [sp, #0x20]
+0x00959d3c:  f50b40f9    ldr       x21, [sp, #0x10]
+0x00959d40:  fd7bc3a8    ldp       x29, x30, [sp], #0x30
+0x00959d44:  c0035fd6    ret       
+
+=== canmove_0x95a494.bin (VMA: 0x0095a494, Size: 172 bytes) ===
+0x0095a494:  fd7bbea9    stp       x29, x30, [sp, #-0x20]!
+0x0095a498:  f44f01a9    stp       x20, x19, [sp, #0x10]
+0x0095a49c:  fd030091    mov       x29, sp
+0x0095a4a0:  f303012a    mov       w19, w1
+0x0095a4a4:  f403002a    mov       w20, w0
+0x0095a4a8:  a88cf697    bl        #0x6fd748
+0x0095a4ac:  08e79852    mov       w8, #0xc738
+0x0095a4b0:  097d8052    mov       w9, #0x3e8
+0x0095a4b4:  8802289b    smaddl    x8, w20, w8, x0
+0x0095a4b8:  6822299b    smaddl    x8, w19, w9, x8
+0x0095a4bc:  892b8752    mov       w9, #0x395c
+0x0095a4c0:  0901a072    movk      w9, #8, lsl #16
+0x0095a4c4:  086969b8    ldr       w8, [x8, x9]
+0x0095a4c8:  08030034    cbz       w8, #0x95a528
+0x0095a4cc:  947e4093    sxtw      x20, w20
+0x0095a4d0:  737e4093    sxtw      x19, w19
+0x0095a4d4:  9d8cf697    bl        #0x6fd748
+0x0095a4d8:  08e79852    mov       w8, #0xc738
+0x0095a4dc:  097d8052    mov       w9, #0x3e8
+0x0095a4e0:  8802289b    smaddl    x8, w20, w8, x0
+0x0095a4e4:  6822299b    smaddl    x8, w19, w9, x8
+0x0095a4e8:  895d8752    mov       w9, #0x3aec
+0x0095a4ec:  0901a072    movk      w9, #8, lsl #16
+0x0095a4f0:  086969b8    ldr       w8, [x8, x9]
+0x0095a4f4:  e8010034    cbz       w8, #0x95a530
+0x0095a4f8:  948cf697    bl        #0x6fd748
+0x0095a4fc:  08e79852    mov       w8, #0xc738
+0x0095a500:  097d8052    mov       w9, #0x3e8
+0x0095a504:  8802289b    smaddl    x8, w20, w8, x0
+0x0095a508:  6822299b    smaddl    x8, w19, w9, x8
+0x0095a50c:  095e8752    mov       w9, #0x3af0
+0x0095a510:  0901a072    movk      w9, #8, lsl #16
+0x0095a514:  086969b8    ldr       w8, [x8, x9]
+0x0095a518:  1f010071    cmp       w8, #0
+0x0095a51c:  48008052    mov       w8, #2
+0x0095a520:  0005881a    cinc      w0, w8, ne
+0x0095a524:  04000014    b         #0x95a534
+0x0095a528:  e0031f2a    mov       w0, wzr
+0x0095a52c:  02000014    b         #0x95a534
+0x0095a530:  20008052    mov       w0, #1
+0x0095a534:  f44f41a9    ldp       x20, x19, [sp, #0x10]
+0x0095a538:  fd7bc2a8    ldp       x29, x30, [sp], #0x20
+0x0095a53c:  c0035fd6    ret       
+
+=== callee_0x6fd748.bin (VMA: 0x006fd748, Size: 12 bytes) ===
+0x006fd748:  802000b0    adrp      x0, #0xb0e000
+0x006fd74c:  00803c91    add       x0, x0, #0xf20
+0x006fd750:  c0035fd6    ret       
+

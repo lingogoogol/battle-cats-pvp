@@ -1,0 +1,64 @@
+{
+  "version": "1.0.0",
+  "id": 3,
+  "name": "第 3 關：菲律賓 (Philippines)",
+  "length": 3800,
+  "cat_castle_hp": 10000,
+  "enemy_castle_hp": 15000,
+  "timed_spawns": [
+    {
+      "frame": 40,
+      "enemy_key": "snache"
+    },
+    {
+      "frame": 90,
+      "enemy_key": "snache"
+    },
+    {
+      "frame": 180,
+      "enemy_key": "doge"
+    },
+    {
+      "frame": 300,
+      "enemy_key": "baa_baa"
+    },
+    {
+      "frame": 450,
+      "enemy_key": "hippoe"
+    }
+  ],
+  "periodic_spawns": [
+    {
+      "interval": 200,
+      "start_frame": 500,
+      "enemy_key": "snache"
+    },
+    {
+      "interval": 350,
+      "start_frame": 700,
+      "enemy_key": "doge"
+    },
+    {
+      "interval": 600,
+      "start_frame": 1000,
+      "enemy_key": "baa_baa"
+    }
+  ],
+  "castle_triggers": [
+    {
+      "hp_threshold_pct": 0.85,
+      "enemy_key": "hippoe",
+      "id": "boss_1"
+    },
+    {
+      "hp_threshold_pct": 0.4,
+      "enemy_key": "hippoe",
+      "id": "boss_2"
+    },
+    {
+      "hp_threshold_pct": 0.2,
+      "enemy_key": "baa_baa",
+      "id": "frenzy_sheep"
+    }
+  ]
+}

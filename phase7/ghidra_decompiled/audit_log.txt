@@ -1,0 +1,15 @@
+=== Phase 7 P7-A Ghidra Memory & Address Audit ===
+Addr: 0x001c11a1 | Target: battleCheckLogic     | Block: .rela.dyn  | Perms: R=true W=false X=false | IsFunction: false
+Addr: 0x001bf6ba | Target: battle_createButton  | Block: .rela.dyn  | Perms: R=true W=false X=false | IsFunction: false
+Addr: 0x001befe1 | Target: battle_initWin       | Block: .rela.dyn  | Perms: R=true W=false X=false | IsFunction: false
+
+=== Decompilation Results ===
+0x00309c5c (MyActivity_appInit): DECOMPILED successfully -> MyActivity_appInit.c (209 chars)
+0x00309d2c (MyActivity_appUpdateDraw): DECOMPILED successfully -> MyActivity_appUpdateDraw.c (215 chars)
+0x00309e10 (MyActivity_fsInit): DECOMPILED successfully -> MyActivity_fsInit.c (208 chars)
+0x00309e18 (MyActivity_gfxInit): DECOMPILED successfully -> MyActivity_gfxInit.c (209 chars)
+0x0030a098 (MyActivity_appTouch): DECOMPILED successfully -> MyActivity_appTouch.c (210 chars)
+0x0030a388 (MyActivity_kill): DECOMPILED successfully -> MyActivity_kill.c (206 chars)
+0x0098ef3c (Application_EngineCoreLoop_0x98ef3c): DECOMPILED successfully -> Application_EngineCoreLoop_0x98ef3c.c (148383 chars)
+0x009909c4 (Application_Update_0x9909c4): DECOMPILED successfully -> Application_Update_0x9909c4.c (119586 chars)
+0x006f74a0 (AssetCatalog_RegisterPacks_0x6f74a0): DECOMPILED successfully -> AssetCatalog_RegisterPacks_0x6f74a0.c (32863 chars)

@@ -1,0 +1,37 @@
+﻿
+--- Running Fault Injection (Mutation) Tests on Chain ---
+  [PASS] Mutation 1 (Inverted Position Formula): DETECTED by differential comparator
+  [PASS] Mutation 2 (Inverted Knockback Decay): DETECTED by differential comparator
+  [PASS] Mutation 3 (False Move Permission on Stopped Unit): DETECTED by differential comparator
+
+--- Running Native Multi-Function Differential Matrix ---
+  [PASS] Cat standard advance:
+         Native: CanMove=1, KB=0, Pos=110
+         Python: CanMove=1, KB=0, Pos=110
+  [PASS] Cat in knockback (advance inhibited, kb-1):
+         Native: CanMove=1, KB=4, Pos=100
+         Python: CanMove=1, KB=4, Pos=100
+  [PASS] Cat stopped/dead (flag_95c=0, advance inhibited):
+         Native: CanMove=0, KB=0, Pos=100
+         Python: CanMove=0, KB=0, Pos=100
+  [PASS] Cat slowed (can_move=2, advance inhibited):
+         Native: CanMove=2, KB=0, Pos=100
+         Python: CanMove=2, KB=0, Pos=100
+  [PASS] Cat special state (can_move=3, advance inhibited):
+         Native: CanMove=3, KB=0, Pos=100
+         Python: CanMove=3, KB=0, Pos=100
+  [PASS] Enemy standard advance (negative speed):
+         Native: CanMove=1, KB=0, Pos=942
+         Python: CanMove=1, KB=0, Pos=942
+  [PASS] Enemy knockback decay to 0:
+         Native: CanMove=1, KB=0, Pos=950
+         Python: CanMove=1, KB=0, Pos=950
+  [PASS] Boundary slot 50 advance from pos 0:
+         Native: CanMove=1, KB=0, Pos=15
+         Python: CanMove=1, KB=0, Pos=15
+  [PASS] Boundary slot 50 enemy knockback decay:
+         Native: CanMove=1, KB=9, Pos=6000
+         Python: CanMove=1, KB=9, Pos=6000
+  [PASS] Negative coordinate boundary advance:
+         Native: CanMove=1, KB=0, Pos=-495
+         Python: CanMove=1, KB=0, Pos=-495
