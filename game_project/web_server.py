@@ -300,7 +300,7 @@ class BattleRoom:
             for team_id in (TEAM_CAT, TEAM_ENEMY):
                 for slot_idx in range(1, len(sim.units[team_id])):
                     u = sim.units[team_id][slot_idx]
-                    if u is not None and u.is_alive:
+                    if u is not None and (u.is_alive or getattr(u, "is_dying", False)):
                         # Determine rig code & anim state
                         rig_code = u.texture_code or u.spec.get("texture_code", "")
                         if not rig_code:
@@ -340,6 +340,7 @@ class BattleRoom:
                             "scale": float(u.spec.get("render_scale", 0.62)),
                             "tint": u.spec.get("tint_rgb"),
                             "custom": bool(u.spec.get("is_custom", False)),
+                            "is_dying": bool(getattr(u, "is_dying", False)),
                         })
 
             def serialize_team_hud(t_id: int) -> Dict[str, Any]:

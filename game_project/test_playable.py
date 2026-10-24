@@ -91,7 +91,8 @@ class TestPlayableBattle(unittest.TestCase):
         self.assertGreaterEqual(kbs, 1, "Expected knockback threshold reached")
 
     def test_05_units_removed_on_death(self):
-        """Criterion 5: 死亡後會移除槽位"""
+        """Criterion 5: 死亡後進行 11-frame 擊退序列並在結束後移除槽位"""
+        self.sim.spawner.spawn_entries = []
         self.sim.spawn_enemy("doge")
         doge = self.sim.units[TEAM_ENEMY][1]
         self.assertIsNotNone(doge)
@@ -99,8 +100,17 @@ class TestPlayableBattle(unittest.TestCase):
         # Kill doge
         doge.hp = 0
         self.sim.step()
-        # Slot 1 should now be cleaned and set to None
-        self.assertIsNone(self.sim.units[TEAM_ENEMY][1], "Dead unit was not cleared from slot")
+        # On first step after lethal damage, unit enters authentic dying knockback state
+        self.assertFalse(doge.is_alive)
+        self.assertTrue(doge.is_dying)
+        self.assertEqual(doge.anim_state, "kb")
+
+        # Run until 11-frame death knockback sequence completes
+        for _ in range(12):
+            self.sim.step()
+
+        # Slot 1 should now be completely cleaned and set to None
+        self.assertIsNone(self.sim.units[TEAM_ENEMY][1], "Dead unit was not cleared from slot after death sequence")
 
     def test_06_can_attack_castle(self):
         """Criterion 6: 可以攻擊城堡"""

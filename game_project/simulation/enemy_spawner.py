@@ -101,7 +101,8 @@ class StageWaveSpawner:
 
         for entry in self.spawn_entries:
             entry.tick()
-            if current_active_enemies + len(to_spawn) >= self.max_enemies:
+            # In authentic PONOS stages, boss spawns bypass the concurrent enemy field limit
+            if entry.boss_flag <= 0 and current_active_enemies + len(to_spawn) >= self.max_enemies:
                 continue
 
             if entry.can_spawn(current_frame, cur_hp_pct):

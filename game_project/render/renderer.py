@@ -58,18 +58,24 @@ class FloatingText:
         return self.life > 0
 
 class WaveEffectFX:
-    def __init__(self, x: float, team: int, frames: List[pygame.Surface], life: int = 18):
+    def __init__(self, x: float, team: int, frames: List[pygame.Surface], delay: int = 0, life: int = 18):
         self.x = x
         self.team = team
         self.frames = frames
+        self.delay = delay
         self.life = life
         self.max_life = life
 
     def update(self) -> bool:
+        if self.delay > 0:
+            self.delay -= 1
+            return True
         self.life -= 1
         return self.life > 0
 
     def render(self, surface: pygame.Surface, camera: Camera2D):
+        if self.delay > 0:
+            return
         sx = camera.world_to_screen_x(self.x)
         if sx < -100 or sx > SCREEN_WIDTH + 100:
             return
@@ -539,15 +545,18 @@ class BattleRenderer(BaseRenderer):
                 )
                 self.sound_mgr.play_sfx("cannon_fire")
             elif etype == "wave_attack":
-                s_x = ev.get("start_x", 0)
-                e_x = ev.get("end_x", 0)
+                origin = ev.get("x", ev.get("start_x", 0))
+                dir_ = ev.get("direction", -1)
+                lvl = ev.get("level", 1)
+                seg0 = ev.get("seg0", 67.5)
+                prog = ev.get("prog", 200.0)
+                seg_frames = ev.get("seg_frames", 3)
                 team = ev.get("team", TEAM_CAT)
                 frames = self.wave_blue_frames if team == TEAM_CAT else self.wave_pink_frames
-                min_wx, max_wx = min(s_x, e_x), max(s_x, e_x)
-                wx = min_wx
-                while wx <= max_wx:
-                    self.wave_effects.append(WaveEffectFX(wx, team, frames, life=18))
-                    wx += 160.0
+                for seg_idx in range(lvl):
+                    wx = origin + dir_ * (seg0 + seg_idx * prog)
+                    delay = seg_idx * seg_frames
+                    self.wave_effects.append(WaveEffectFX(wx, team, frames, delay=delay, life=18))
 
     def _render_environment(self):
         # Authentic Battle Cats Environment - 100% bg000.png, Zero procedural lines or boxes
@@ -671,12 +680,13 @@ class BattleRenderer(BaseRenderer):
 
     def _draw_unit(self, unit: SimUnit, sx: int, sy: int, frame: int):
         self.unit_sprite_mgr.draw_unit(self.surface, unit, sx, sy, frame)
-        # Render authentic Freeze / Slow status icons from bg00.imgcut when active
-        if getattr(unit, "freeze_timer", 0) > 0 and self.freeze_frames:
-            f_surf = self.freeze_frames[(frame // 4) % len(self.freeze_frames)]
-            self.surface.blit(f_surf, (sx - f_surf.get_width() // 2, sy - 64))
-        elif getattr(unit, "slow_timer", 0) > 0 and self.slow_icon is not None:
-            self.surface.blit(self.slow_icon, (sx - self.slow_icon.get_width() // 2, sy - 76))
+        # Render authentic Freeze / Slow status icons from bg00.imgcut when active (and not dying)
+        if not getattr(unit, "is_dying", False):
+            if getattr(unit, "freeze_timer", 0) > 0 and self.freeze_frames:
+                f_surf = self.freeze_frames[(frame // 4) % len(self.freeze_frames)]
+                self.surface.blit(f_surf, (sx - f_surf.get_width() // 2, sy - 64))
+            elif getattr(unit, "slow_timer", 0) > 0 and self.slow_icon is not None:
+                self.surface.blit(self.slow_icon, (sx - self.slow_icon.get_width() // 2, sy - 76))
 
     def _render_fx(self):
         # Update and render wave effects

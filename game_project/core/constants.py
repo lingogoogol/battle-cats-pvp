@@ -16,9 +16,25 @@ SLOT_CASTLE = 0
 TEAM_CAT = 0
 TEAM_ENEMY = 1
 
-# Knockback & motion constants verified in Phase 10-12
-KNOCKBACK_FRAMES_DEFAULT = 12
-KNOCKBACK_SPEED_PX = 8
+# Knockback & motion constants.
+# Native RE (Phase 10-12) verified the per-frame KB timer decrement (+0x83AD4, `add w10, -1`);
+# distance/duration tables follow the PONOS interrupt table used by BCU (KB_DIS / KB_TIME):
+#   normal KB / death KB: 165 units over 11 frames, boss shockwave: 705 units over 47 frames.
+KNOCKBACK_FRAMES_DEFAULT = 11
+KNOCKBACK_SPEED_PX = 15  # legacy average speed (165 / 11)
+KB_SPECS = {
+    "kb": (165.0, 11),
+    "death": (165.0, 11),
+    "boss": (705.0, 47),
+}
+
+# Wave attack geometry (W_PROG / W_TIME / initial offset / hitbox width)
+WAVE_PROG = 200.0
+WAVE_SEG_FRAMES = 3
+WAVE_INI_CAT = -67.5
+WAVE_INI_ENEMY = -32.75
+WAVE_WIDTH_CAT = 400.0
+WAVE_WIDTH_ENEMY = 500.0
 
 # Colors (Hex / RGB)
 COLOR_SKY = (180, 215, 245)

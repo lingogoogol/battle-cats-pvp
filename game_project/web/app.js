@@ -918,6 +918,9 @@ function onReceiveRoomState(st) {
           dir: dir,
           lvl: ev.level || 2,
           team: ev.team || 0,
+          seg0: ev.seg0 !== undefined ? ev.seg0 : 67.5,
+          prog: ev.prog || 200,
+          segFrames: ev.seg_frames || 3,
           age: 0,
         });
       }
@@ -1396,10 +1399,10 @@ function renderBattleScene() {
       renderSkeletalRig(ctx, u.rig, u.anim, drawAf, sx, GROUND_Y + 4 + zOff, u.scale || 0.62, flipH);
 
       // Authentic Freeze Bind & Slow Status Icons (bg00.imgcut cuts 17, 18, 13)
-      if (u.frz > 0 && IMAGES.bg000 && IMAGES.bg000.complete) {
+      if (!u.is_dying && u.frz > 0 && IMAGES.bg000 && IMAGES.bg000.complete) {
         const fCut = Math.floor(clientTick / 4) % 2 === 0 ? [933, 248, 60, 60] : [871, 248, 60, 60];
         drawSubImage(ctx, IMAGES.bg000, fCut[0], fCut[1], fCut[2], fCut[3], sx - 36, GROUND_Y - 68 + zOff, 72, 72);
-      } else if (u.slw > 0 && IMAGES.bg000 && IMAGES.bg000.complete) {
+      } else if (!u.is_dying && u.slw > 0 && IMAGES.bg000 && IMAGES.bg000.complete) {
         drawSubImage(ctx, IMAGES.bg000, 772, 248, 45, 50, sx - 22, GROUND_Y - 76 + zOff, 45, 50);
       }
     });
@@ -1492,7 +1495,9 @@ function drawCastleHp(ctx, sx, y, hp, maxHp) {
 function advanceClientFX30Fps() {
   for (let i = fxWaves.length - 1; i >= 0; i--) {
     fxWaves[i].age++;
-    if (fxWaves[i].age > fxWaves[i].lvl * 4 + 14) fxWaves.splice(i, 1);
+    const segFrames = fxWaves[i].segFrames || 3;
+    const maxLife = (fxWaves[i].lvl - 1) * segFrames + 14;
+    if (fxWaves[i].age > maxLife) fxWaves.splice(i, 1);
   }
   for (let i = fxCannonBeams.length - 1; i >= 0; i--) {
     fxCannonBeams[i].age++;
@@ -1533,11 +1538,14 @@ function renderCombatFX(ctx, worldToScreenX) {
   for (let i = fxWaves.length - 1; i >= 0; i--) {
     const w = fxWaves[i];
     const waveCuts = w.team === TEAM_ENEMY ? pinkWaveCuts : blueWaveCuts;
+    const segFrames = w.segFrames || 3;
+    const seg0 = w.seg0 !== undefined ? w.seg0 : 67.5;
+    const prog = w.prog || 200;
     for (let lv = 0; lv < w.lvl; lv++) {
-      const trig = lv * 4;
+      const trig = lv * segFrames;
       const localAge = w.age - trig;
       if (localAge >= 0 && localAge < 12 && IMAGES.bg000 && IMAGES.bg000.complete) {
-        const px = worldToScreenX(w.startX + w.dir * (lv * 130 + 60));
+        const px = worldToScreenX(w.startX + w.dir * (seg0 + lv * prog));
         const cIdx = Math.min(waveCuts.length - 1, Math.floor(localAge / 2));
         const wc = waveCuts[cIdx];
         drawSubImage(ctx, IMAGES.bg000, wc[0], wc[1], wc[2], wc[3], px - 45, GROUND_Y - 132, 90, 138, w.dir > 0);
