@@ -231,11 +231,7 @@ class UnitSpriteManager:
             base_scale = unit.spec.get("render_scale", 0.62)
             z_off = (unit.slot % 5) * 2 - 4
             visual_sx = sx + (-48 if unit.team == TEAM_CAT else 48)
-            uid = f"{unit.team}_{unit.slot}"
-            hit_flash = self.hit_flash_timers.get(uid, 0) > 0
-            if hit_flash:
-                self.hit_flash_timers[uid] -= 1
-            skel.render(surface, visual_sx, sy + 4 + z_off, scale=base_scale, flip_h=flip_h, hit_flash=hit_flash)
+            skel.render(surface, visual_sx, sy + 4 + z_off, scale=base_scale, flip_h=flip_h)
             return
 
     def _resolve_cat_id(self, unit: SimUnit) -> int:

@@ -56,13 +56,20 @@ let fxShieldShatters = [];
 let cameraShake = { timer: 0, intensity: 0, dx: 0, dy: 0 };
 let unitVisualState = new Map();
 
-// Authentic Audio Player for Web Client
+// Authentic Audio Player with Zero-Allocation Audio Pooling & Throttling
 const AUDIO = {
   enabled: true,
-  sounds: {},
+  pools: {},
+  poolIdx: {},
+  lastPlayTime: {},
   bgm: null,
   playSFX(name) {
     if (!this.enabled) return;
+    const now = performance.now();
+    if (name === "hit" && this.lastPlayTime[name] && (now - this.lastPlayTime[name] < 50)) {
+      return;
+    }
+    this.lastPlayTime[name] = now;
     try {
       const fileMap = {
         deploy: "/audio/snd168.wav",
@@ -80,17 +87,27 @@ const AUDIO = {
         boss_death: "/audio/snd189.wav",
         thunderbolt: "/audio/snd194.wav",
         shield_break: "/audio/snd188.wav",
-        barrier_break: "/audio/snd188.wav"
+        barrier_break: "/audio/snd188.wav",
+        castle_hit: "/audio/snd169.wav"
       };
-      if (fileMap[name]) {
-        if (!this.sounds[name]) {
-          this.sounds[name] = new Audio(fileMap[name]);
-          this.sounds[name].volume = 0.55;
+      const src = fileMap[name];
+      if (!src) return;
+      if (!this.pools[name]) {
+        this.pools[name] = [];
+        this.poolIdx[name] = 0;
+        const poolSize = (name === "hit" || name === "click") ? 6 : 3;
+        for (let i = 0; i < poolSize; i++) {
+          const a = new Audio(src);
+          a.volume = 0.55;
+          this.pools[name].push(a);
         }
-        const a = this.sounds[name].cloneNode();
-        a.volume = 0.55;
-        a.play().catch(() => {});
       }
+      const pool = this.pools[name];
+      const idx = this.poolIdx[name];
+      this.poolIdx[name] = (idx + 1) % pool.length;
+      const sound = pool[idx];
+      sound.currentTime = 0;
+      sound.play().catch(() => {});
     } catch (_) {}
   },
   playBGM(track = "battle") {
@@ -966,13 +983,11 @@ function onReceiveRoomState(st) {
       const ev = item.ev;
       if (!ev) return;
       if (ev.type === "damage") {
-        if (ev.target_id) {
-          const vis = unitVisualState.get(ev.target_id);
-          if (vis) vis.hitFlash = 3;
-        }
         if (ev.target_is_castle) {
-          castleShake[ev.team] = 8;
-          fxDust.push({ x: ev.x, y: GROUND_Y - 30, age: 0, maxLife: 15, isCastle: true });
+          castleShake[ev.team] = 6;
+          if (fxDust.length < 10) {
+            fxDust.push({ x: ev.x, y: GROUND_Y - 30, age: 0, maxLife: 12, isCastle: true });
+          }
           AUDIO.playSFX("castle_hit");
         }
         // Authentic PONOS Battle Cats: NO floating damage text pops up on attack;
@@ -985,12 +1000,14 @@ function onReceiveRoomState(st) {
             : ev.x + 48 + (ev.radius || 20) * 0.5);
         const rad = ev.radius || 24;
         const targetY = Math.max(GROUND_Y - 120, GROUND_Y - rad - 6 + jy);
-        fxHitSparks.push({
-          x: hitX + (Math.random() - 0.5) * 8,
-          y: targetY,
-          isCrit: !!ev.is_crit,
-          age: 0,
-        });
+        if (fxHitSparks.length < 16) {
+          fxHitSparks.push({
+            x: hitX + (Math.random() - 0.5) * 8,
+            y: targetY,
+            isCrit: !!ev.is_crit,
+            age: 0,
+          });
+        }
         if (ev.is_crit) {
           AUDIO.playSFX("crit");
           cameraShake = { timer: 12, intensity: 6.0, dx: 0, dy: 0 };
@@ -1000,19 +1017,23 @@ function onReceiveRoomState(st) {
       } else if (ev.type === "knockback") {
         const rad = ev.radius || 20;
         const targetY = Math.max(GROUND_Y - 120, GROUND_Y - rad - 4);
-        fxHitSparks.push({
-          x: ev.x + (ev.team === TEAM_CAT ? -48 : 48),
-          y: targetY,
-          isCrit: false,
-          age: 0,
-        });
-        fxDust.push({
-          x: ev.x + (ev.team === TEAM_CAT ? -48 : 48),
-          y: GROUND_Y - 4,
-          age: 0,
-          maxLife: 12,
-          isCastle: false
-        });
+        if (fxHitSparks.length < 16) {
+          fxHitSparks.push({
+            x: ev.x + (ev.team === TEAM_CAT ? -48 : 48),
+            y: targetY,
+            isCrit: false,
+            age: 0,
+          });
+        }
+        if (fxDust.length < 10) {
+          fxDust.push({
+            x: ev.x + (ev.team === TEAM_CAT ? -48 : 48),
+            y: GROUND_Y - 4,
+            age: 0,
+            maxLife: 10,
+            isCastle: false
+          });
+        }
         AUDIO.playSFX("knockback");
       } else if (ev.type === "death") {
         fxDeathSouls.push({
@@ -1649,16 +1670,7 @@ function renderBattleScene() {
       const rigObj = RIGS[u.rig] || RIGS["000_f"];
       const isEnemyRig = rigObj ? !!rigObj.is_enemy : u.rig.includes("_e");
       const flipH = isEnemyRig ? u.team === TEAM_CAT : u.team === TEAM_ENEMY;
-      const doFlash = vis && vis.hitFlash > 0;
-      if (doFlash) {
-        vis.hitFlash--;
-        ctx.save();
-        ctx.filter = "brightness(2.2) contrast(1.1)";
-      }
       renderSkeletalRig(ctx, u.rig, u.anim, drawAf, sx, GROUND_Y + 4 + zOff, u.scale || 0.62, flipH);
-      if (doFlash) {
-        ctx.restore();
-      }
 
       // Starred Alien Barrier
       if (!u.is_dying && u.barrier > 0) {
