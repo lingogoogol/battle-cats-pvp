@@ -2608,15 +2608,23 @@ function renderLoop(now = performance.now()) {
         }
       }
       const dir = u.team === TEAM_CAT ? -1.0 : 1.0;
-      if (u.anim === "walk" && !(u.frz > 0)) {
+      const errX = vis.targetX - vis.renderX;
+      if (u.anim === "kb") {
+        // Authentic PONOS knockback slide: tightly follow targetX with smooth 60/120fps dampening, no 50px teleport snap
+        const kbFollow = Math.min(1.0, dt * 45.0);
+        vis.renderX += errX * kbFollow;
+      } else if (u.anim === "walk" && !(u.frz > 0)) {
         const effSpd = u.slw > 0 ? 0.5 : Math.max(0.5, (u.spd || 10.0) * 0.5);
         vis.renderX += dir * effSpd * df;
-      }
-      const errX = vis.targetX - vis.renderX;
-      if (Math.abs(errX) > 50.0) {
-        vis.renderX = vis.targetX;
+        const walkFollow = Math.min(1.0, dt * 25.0);
+        vis.renderX += errX * walkFollow;
       } else {
-        vis.renderX += errX * Math.min(1.0, dt * 25.0);
+        // Idle / Attack / Freeze: adhere to server position smoothly
+        vis.renderX += errX * Math.min(1.0, dt * 30.0);
+      }
+      // Only snap for actual teleports (such as Alien warp or initial spawn > 200px)
+      if (Math.abs(vis.targetX - vis.renderX) > 200.0) {
+        vis.renderX = vis.targetX;
       }
     });
   }

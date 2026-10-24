@@ -336,6 +336,13 @@ class BattleSimulation:
                 p2_c.max_hp = int(p2_c.max_hp * t1_eff["castle_hp_mult"])
                 p2_c.hp = p2_c.max_hp
 
+        # Apply EoC treasure and Nyancombo cooldown reduction to deployers
+        t0_cd_reduct = t0_tr.get("cooldown_reduction", 0) + t0_eff.get("cooldown_reduction", 0)
+        self.deployer.apply_cooldown_reduction(t0_cd_reduct)
+        if self.pvp_mode:
+            t1_cd_reduct = t1_tr.get("cooldown_reduction", 0) + self.team_combo_effects[TEAM_ENEMY].get("cooldown_reduction", 0)
+            self.p2_deployer.apply_cooldown_reduction(t1_cd_reduct)
+
         # Frame Events for Renderer (preserved across pre-step user input & step())
         self.visual_events: List[Dict[str, Any]] = []
         self._pending_visual_events: List[Dict[str, Any]] = []
@@ -531,7 +538,7 @@ class BattleSimulation:
         if u is None or u.slot == SLOT_CASTLE:
             return False
         dist, frames = KB_SPECS.get(kind, KB_SPECS["kb"])
-        if u.is_in_knockback() and frames <= u.kb_total_frames:
+        if u.is_in_knockback() and frames <= u.knockback_timer:
             return False
         u.kb_distance = float(dist)
         u.kb_total_frames = int(frames)
@@ -899,7 +906,7 @@ class BattleSimulation:
                 if unit is None or (not unit.is_alive and not unit.is_dying):
                     continue
 
-                # Knockback handling: ease-out displacement of `kb_distance` over `kb_total_frames`
+                # Knockback handling: authentic PONOS constant velocity displacement (~15 DU / frame)
                 if unit.is_in_knockback():
                     unit.is_moving = False
                     unit.is_winding_up = False
@@ -907,9 +914,7 @@ class BattleSimulation:
                     unit.backswing_timer = 0
                     total = max(1, unit.kb_total_frames or KNOCKBACK_FRAMES_DEFAULT)
                     dist = unit.kb_distance or KB_SPECS["kb"][0]
-                    t0 = unit.kb_elapsed / total
-                    t1 = min(1.0, (unit.kb_elapsed + 1) / total)
-                    dx = dist * ((1.0 - (1.0 - t1) ** 2) - (1.0 - (1.0 - t0) ** 2))
+                    dx = dist / float(total)
                     unit.kb_elapsed += 1
                     unit.knockback_timer -= 1
                     unit.pos_x -= direction * dx

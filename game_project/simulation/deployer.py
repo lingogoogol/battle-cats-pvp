@@ -25,13 +25,17 @@ class CatDeployer:
 
         # Track cooldown frames for each deck slot
         self.cooldowns = [0] * len(self.deck_keys)
+        self.base_max_cooldowns = []
         self.max_cooldowns = []
 
         for k in self.deck_keys:
             spec = self._lookup_spec(k)
             if spec is not None:
-                self.max_cooldowns.append(spec.get("cooldown_frames", 90))
+                base_cd = int(spec.get("cooldown_frames", 150))
+                self.base_max_cooldowns.append(base_cd)
+                self.max_cooldowns.append(base_cd)
             else:
+                self.base_max_cooldowns.append(999999)
                 self.max_cooldowns.append(999999)
 
     def set_deck(self, deck_keys: List[Union[str, int]]):
@@ -40,13 +44,27 @@ class CatDeployer:
             for k in deck_keys[:10]
         ]
         self.cooldowns = [0] * len(self.deck_keys)
+        self.base_max_cooldowns = []
         self.max_cooldowns = []
         for k in self.deck_keys:
             spec = self._lookup_spec(k)
             if spec is not None:
-                self.max_cooldowns.append(spec.get("cooldown_frames", 90))
+                base_cd = int(spec.get("cooldown_frames", 150))
+                self.base_max_cooldowns.append(base_cd)
+                self.max_cooldowns.append(base_cd)
             else:
+                self.base_max_cooldowns.append(999999)
                 self.max_cooldowns.append(999999)
+
+    def apply_cooldown_reduction(self, reduction_frames: int = 0):
+        """Applies EoC treasure and Nyancombo reduction to deck slot max cooldowns,
+        strictly respecting the PONOS native engine hard minimum of 60 frames (2.0s)."""
+        for idx in range(len(self.deck_keys)):
+            base_cd = self.base_max_cooldowns[idx] if idx < len(self.base_max_cooldowns) else 150
+            eff_cd = max(60, base_cd - reduction_frames)
+            self.max_cooldowns[idx] = eff_cd
+            if self.cooldowns[idx] > eff_cd:
+                self.cooldowns[idx] = eff_cd
 
     def _lookup_spec(self, key: Any) -> Optional[Dict[str, Any]]:
         if key is None or key == -1:
@@ -136,4 +154,8 @@ class CatDeployer:
 
     def trigger_cooldown(self, idx: int, reduction_frames: int = 0):
         if 0 <= idx < len(self.cooldowns):
-            self.cooldowns[idx] = max(1, self.max_cooldowns[idx] - reduction_frames)
+            base_cd = self.base_max_cooldowns[idx] if idx < len(self.base_max_cooldowns) else self.max_cooldowns[idx]
+            # PONOS Hard Floor: Cooldown can NEVER be lower than 60 frames (2.0s) regardless of treasures or combos
+            eff_cd = max(60, base_cd - reduction_frames)
+            self.max_cooldowns[idx] = eff_cd
+            self.cooldowns[idx] = eff_cd

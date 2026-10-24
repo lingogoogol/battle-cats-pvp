@@ -324,7 +324,8 @@ class OfficialDataParser:
             ]
             tex_code = f"{cat_idx:03d}_f"
             f_windup = attack_hits[0]["foreswing"]
-            cd_frames = max(60, row[7] * 2 - 264)
+            # Authentic PONOS cooldown formula: row[7] * 2 (with hard minimum 60 frames = 2.0s)
+            cd_frames = max(60, row[7] * 2)
             cat_obj = CatData(
                 id=cat_idx,
                 name=name,
@@ -432,7 +433,8 @@ class OfficialDataParser:
             target_traits, abilities, attack_hits, total_atk, max_foreswing = self._parse_cat_csv_row(row)
             tex_code = f"{uid:03d}_{form}"
             f_windup = attack_hits[0]["foreswing"]
-            cd_frames = max(60, min(1800, row[7] * 2 - 264))
+            # Authentic PONOS cooldown formula: row[7] * 2 (with hard minimum 60 frames = 2.0s)
+            cd_frames = max(60, row[7] * 2)
             self.expanded_cats[u_key] = CatData(
                 id=uid,
                 name=name,
