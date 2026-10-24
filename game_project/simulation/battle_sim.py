@@ -256,14 +256,30 @@ class BattleSimulation:
         self.p2_cannon_charge: int = 0
         base_max_charge = max(300, 600 - (cannon_charge_lv - 1) * 20)
         self.cannon_max_charge: int = max(150, base_max_charge - t0_tr["cannon_charge_reduction"])
-        self.cannon_range: int = 800 # Authentic visible battlefield beam range
+        
+        # Authentic PONOS Cat Cannon Range: 2355 DU base at Lv 1, +405 DU / level, Max Lv 10 = 6000 DU
+        c_range_lv = base_levels.get("cannon_range", 10)
+        p2_c_range_lv = (p2_base_levels or {}).get("cannon_range", 10)
+        self.cannon_ranges = {
+            TEAM_CAT: min(6000, 2355 + 405 * (c_range_lv - 1)),
+            TEAM_ENEMY: min(6000, 2355 + 405 * (p2_c_range_lv - 1)),
+        }
+        self.cannon_range: int = self.cannon_ranges[TEAM_CAT]
         self.cannon_power: int = 250 + (cannon_pwr_lv - 1) * 50 + t0_tr["cannon_power_bonus"]
         self.cannon_anim_timer: Dict[int, int] = {TEAM_CAT: 0, TEAM_ENEMY: 0}
         self.active_cannon_waves: List[Dict[str, Any]] = []
         self.active_waves: List[Dict[str, Any]] = []
         self.active_surges: List[Dict[str, Any]] = []
-        self.accounting_level = base_levels.get("accounting", 1)
-        self.wallet_multiplier = (1.0 + 0.1 * (self.accounting_level - 1)) * t0_tr["bounty_mult"]
+
+        # Symmetrical Accounting bounty multipliers for Team 0 and Team 1
+        t0_acct = base_levels.get("accounting", 1)
+        t1_acct = (p2_base_levels or {}).get("accounting", 1)
+        self.accounting_level = t0_acct
+        self.wallet_multipliers = {
+            TEAM_CAT: (1.0 + 0.1 * (t0_acct - 1)) * t0_tr["bounty_mult"],
+            TEAM_ENEMY: (1.0 + 0.1 * (t1_acct - 1)) * t1_tr["bounty_mult"],
+        }
+        self.wallet_multiplier = self.wallet_multipliers[TEAM_CAT]
 
         # Apply Treasure bonuses to Castle HP & Wallet
         cat_c = self.units[TEAM_CAT][SLOT_CASTLE]
@@ -308,7 +324,8 @@ class BattleSimulation:
         if t0_eff["worker_level"] > 0:
             self.wallet.level += t0_eff["worker_level"]
             self.wallet._update_level_stats()
-        self.wallet_multiplier *= t0_eff["accounting_mult"]
+        self.wallet_multipliers[TEAM_CAT] *= t0_eff["accounting_mult"]
+        self.wallet_multiplier = self.wallet_multipliers[TEAM_CAT]
         if t0_eff["cannon_charge_rate"] > 0:
             self.cannon_charge = int(self.cannon_max_charge * t0_eff["cannon_charge_rate"])
         if t0_eff["cannon_power_mult"] != 1.0:
@@ -329,6 +346,7 @@ class BattleSimulation:
             if t1_eff["worker_level"] > 0:
                 self.p2_wallet.level += t1_eff["worker_level"]
                 self.p2_wallet._update_level_stats()
+            self.wallet_multipliers[TEAM_ENEMY] *= t1_eff.get("accounting_mult", 1.0)
             if t1_eff["cannon_charge_rate"] > 0:
                 self.p2_cannon_charge = int(self.cannon_max_charge * t1_eff["cannon_charge_rate"])
             if t1_eff["castle_hp_mult"] != 1.0:
@@ -378,11 +396,12 @@ class BattleSimulation:
 
         ctype = self.cannon_types.get(team, "normal")
 
+        c_range = self.cannon_ranges.get(team, self.cannon_range)
         if team == TEAM_CAT:
             self.cannon_charge = 0
             c_unit = self.get_castle(TEAM_CAT)
             beam_start_x = c_unit.pos_x - 30
-            beam_end_x = max(60, beam_start_x - self.cannon_range)
+            beam_end_x = max(60, beam_start_x - c_range)
             min_x, max_x = beam_end_x, beam_start_x
             opp_team = TEAM_ENEMY
             direction = -1
@@ -390,7 +409,7 @@ class BattleSimulation:
             self.p2_cannon_charge = 0
             c_unit = self.get_castle(TEAM_ENEMY)
             beam_start_x = c_unit.pos_x + 30
-            beam_end_x = min(self.battlefield_length - 60, beam_start_x + self.cannon_range)
+            beam_end_x = min(self.battlefield_length - 60, beam_start_x + c_range)
             min_x, max_x = beam_start_x, beam_end_x
             opp_team = TEAM_CAT
             direction = 1
@@ -565,14 +584,16 @@ class BattleSimulation:
 
     def _cannon_hit(self, u: SimUnit, opp_team: int, ctype: str = "normal"):
         if ctype == "slow":
-            dmg = max(1, self.cannon_power // 5)
-            u.hp -= dmg
+            # Authentic PONOS Slowbeam: 0 damage, 0 knockback, pure 120-frame Slow
             if not u.abilities.get("slow_immune", False):
                 u.slow_timer = max(u.slow_timer, 120)
-            if not u.abilities.get("kb_immune", False):
-                self._knockback(u, "cannon")
-                self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
-            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
+                self._emit_event({"type": "slow", "x": u.pos_x, "team": opp_team})
+
+        elif ctype == "curseblast":
+            # Authentic PONOS Curseblast: 0 damage, 0 knockback, pure 180-frame Curse
+            if not u.abilities.get("curse_immune", False):
+                u.curse_timer = max(u.curse_timer, 180)
+                self._emit_event({"type": "curse", "x": u.pos_x, "team": opp_team})
 
         elif ctype == "thunderbolt":
             dmg = self.cannon_power
@@ -609,21 +630,12 @@ class BattleSimulation:
                 self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
             self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
-        elif ctype == "curseblast":
-            dmg = max(1, self.cannon_power // 3)
-            u.hp -= dmg
-            if not u.abilities.get("curse_immune", False):
-                u.curse_timer = max(u.curse_timer, 180)
-                self._emit_event({"type": "curse", "x": u.pos_x, "team": opp_team})
-            if not u.abilities.get("kb_immune", False):
-                self._knockback(u, "cannon")
-                self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
-            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
-
         else: # "normal"
             dmg = 1 if ("metal" in u.traits or u.abilities.get("is_metal")) else self.cannon_power
             u.hp -= dmg
-            if not u.abilities.get("kb_immune", False):
+            # Authentic PONOS Default Cat Cannon: wave blast knocks back even normally immune enemies
+            # (only wave_immune or wave_blocker units are unaffected)
+            if not (u.abilities.get("wave_immune", False) or u.abilities.get("wave_blocker", False)):
                 self._knockback(u, "cannon")
                 self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
             self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "is_crit": True, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
@@ -872,7 +884,7 @@ class BattleSimulation:
             return True
         if getattr(opp, "is_burrowing", False) or getattr(opp, "is_corpse", False) or getattr(opp, "is_dying", False) or getattr(opp, "is_warped", False) or opp.is_in_knockback():
             return False
-        if attacker.abilities.get("attacks_only", False) and attacker.target_traits:
+        if not attacker.is_cursed() and attacker.abilities.get("attacks_only", False) and attacker.target_traits:
             return any(t in opp.traits for t in attacker.target_traits)
         return True
 
@@ -1207,6 +1219,10 @@ class BattleSimulation:
                         "x": opp.pos_x,
                         "team": opp.team,
                     })
+                    # Authentic PONOS: Wave Blocker intercepts and deletes wave, but takes the wave damage unless wave_immune
+                    if not opp.abilities.get("wave_immune", False):
+                        wave["hit"].add(id(opp))
+                        self._apply_damage(attacker=wave["attacker"], target=opp, direction=wave["dir"], is_wave=True, hit_damage=wave["dmg"])
                     break
                 if opp.abilities.get("wave_immune", False):
                     continue
@@ -1431,15 +1447,17 @@ class BattleSimulation:
             return
 
         # 6. Aku Shield & Alien Barrier check
+        shield_or_barrier_blocked = False
         if getattr(target, "aku_shield", 0) > 0:
             sp_prob = attacker.abilities.get("shield_pierce_prob", 0) if use_ability else 0
             if sp_prob > 0 and self.rng.randint(1, 100) <= sp_prob:
                 target.aku_shield = 0
                 self._emit_event({"type": "shield_pierce", "x": target.pos_x, "team": target.team})
             else:
+                shield_or_barrier_blocked = True
                 if damage >= target.aku_shield:
-                    damage -= target.aku_shield
                     target.aku_shield = 0
+                    damage = 0  # Authentic PONOS: excess damage from breaking blow is negated!
                     self._emit_event({"type": "shield_break", "x": target.pos_x, "team": target.team})
                 else:
                     target.aku_shield -= damage
@@ -1453,24 +1471,29 @@ class BattleSimulation:
                 self._emit_event({"type": "barrier_break", "x": target.pos_x, "team": target.team})
             else:
                 damage = 0
+                shield_or_barrier_blocked = True
 
         target.hp -= damage
 
-        # 7. Toxic % max HP true damage
+        # 7. Toxic % max HP true damage (blocked by active Aku shield or Alien barrier)
         toxic_prob = attacker.abilities.get("toxic_prob", 0) if use_ability else 0
         toxic_hp_pct = attacker.abilities.get("toxic_hp_pct", 0)
-        if target.hp > 0 and target.slot != SLOT_CASTLE and toxic_prob > 0 and toxic_hp_pct > 0 and not target.abilities.get("toxic_immune", False):
+        if target.hp > 0 and not shield_or_barrier_blocked and target.slot != SLOT_CASTLE and toxic_prob > 0 and toxic_hp_pct > 0 and not target.abilities.get("toxic_immune", False):
             if self.rng.randint(1, 100) <= toxic_prob:
                 toxic_damage = max(1, (target.max_hp * toxic_hp_pct) // 100)
                 target.hp -= toxic_damage
                 self._emit_event({"type": "toxic", "x": target.pos_x, "team": target.team, "damage": toxic_damage})
 
-        # 8. Survive Lethal Strike check
+        # 8. Survive Lethal Strike check (Authentic PONOS: surviving lethal guarantees hitback to safety)
         survive_prob = target.abilities.get("survive_prob", 0)
         if target.hp <= 0 and target.slot != SLOT_CASTLE and not target.survived_lethal and survive_prob > 0:
             if self.rng.randint(1, 100) <= survive_prob:
                 target.hp = 1
                 target.survived_lethal = True
+                self._knockback(target, "hitback")
+                self._emit_event({
+                    "type": "knockback", "x": target.pos_x, "radius": target.radius, "team": target.team, "kind": "hitback"
+                })
 
         # Check lethal blow flags for money drops and zombie killer
         if target.hp <= 0:
@@ -1496,7 +1519,8 @@ class BattleSimulation:
             return
 
         # 9. Status Effect Procs (Knockback, Freeze, Slow, Weaken, Curse) when target is alive and hit has use_ability=True
-        can_proc = use_ability and not attacker_cursed and ((not attacker.target_traits) or trait_match)
+        # Authentic PONOS: status effects cannot be applied while an Aku Shield or Alien Barrier absorbs/blocks the hit
+        can_proc = use_ability and not shield_or_barrier_blocked and not attacker_cursed and ((not attacker.target_traits) or trait_match)
         if target.hp > 0 and can_proc:
             kb_prob = attacker.abilities.get("kb_prob", 0)
             if kb_prob > 0 and not target.abilities.get("kb_immune", False) and self.rng.randint(1, 100) <= kb_prob:
@@ -1616,7 +1640,7 @@ class BattleSimulation:
                         })
                     # Award money drop to the opposing team's wallet (scaled by Accounting treasure & extra_money)
                     if opp_team in self.wallets and unit.money_drop > 0:
-                        bounty = int(unit.money_drop * self.wallet_multiplier)
+                        bounty = int(unit.money_drop * self.wallet_multipliers.get(opp_team, 1.0))
                         if getattr(unit, "killed_with_extra_money", False):
                             bounty *= 2
                         self.wallets[opp_team].add_money(bounty)

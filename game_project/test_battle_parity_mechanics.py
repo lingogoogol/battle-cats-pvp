@@ -61,8 +61,9 @@ class TestBattleParityMechanics(unittest.TestCase):
             self.sim.step()
             all_evs.extend(self.sim.visual_events)
 
-        # Wave blocker took 0 damage and blocked the wave from reaching cat_behind
-        self.assertEqual(blocker.hp, init_blocker_hp)
+        # Authentic PONOS parity: Wave blocker intercepts and extinguishes the wave,
+        # taking the wave hit damage (1800), while fully protecting units behind it (500)
+        self.assertEqual(blocker.hp, init_blocker_hp - 200)
         self.assertEqual(cat_behind.hp, init_behind_hp)
         # Verify wave_block visual event was emitted
         block_evs = [ev for ev in all_evs if ev.get("type") == "wave_block"]

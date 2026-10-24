@@ -225,5 +225,177 @@ class TestComprehensiveBattleParity(unittest.TestCase):
         self.assertTrue(unit.survived_lethal)
         self.assertTrue(unit.is_in_knockback(), "Unit must trigger hitback to safety upon surviving lethal")
 
+    def test_13_wave_blocker_absorbs_wave_damage_and_protects_backline(self):
+        """Wave Blocker takes wave damage and extinguishes the wave, protecting units behind it."""
+        blocker = self.sim.spawn_custom_unit({
+            "name": "Octo", "hp": 2000, "speed": 0, "abilities": {"wave_blocker": True}
+        }, team=TEAM_CAT)
+        blocker.pos_x = 1000
+
+        backline = self.sim.spawn_custom_unit({
+            "name": "Backline", "hp": 500, "speed": 0
+        }, team=TEAM_CAT)
+        backline.pos_x = 1400
+
+        enemy = self.sim.spawn_custom_unit({"name": "Wave Enemy", "hp": 1000, "speed": 0}, team=TEAM_ENEMY)
+        enemy.pos_x = 800
+
+        self.sim._trigger_wave_attack(enemy, opp_team=TEAM_CAT, direction=1, wave_lvl=3, hit_damage=300)
+        for _ in range(15):
+            self.sim.step()
+
+        # Blocker took 300 damage
+        self.assertEqual(blocker.hp, 1700)
+        # Backline was protected and took 0 damage
+        self.assertEqual(backline.hp, 500)
+
+    def test_14_aku_shield_negates_excess_breaking_damage(self):
+        """Authentic PONOS rule: when an Aku Shield breaks from normal damage, excess damage is completely negated."""
+        aku = self.sim.spawn_custom_unit({
+            "name": "Aku Foe", "hp": 1000, "speed": 0, "abilities": {"shield_hp": 100}
+        }, team=TEAM_ENEMY)
+        aku.aku_shield = 100
+
+        attacker = self.sim.spawn_custom_unit({"name": "Hitter", "hp": 100, "speed": 0}, team=TEAM_CAT)
+        # Deals 500 damage to a 100 HP shield
+        self.sim._apply_damage(attacker, aku, direction=-1, hit_damage=500)
+
+        # Shield is broken
+        self.assertEqual(aku.aku_shield, 0)
+        # Enemy took 0 damage to main HP: 500 damage was completely absorbed by the 100 HP shield!
+        self.assertEqual(aku.hp, 1000)
+
+    def test_15_aku_shield_blocks_status_effects_and_toxic(self):
+        """Active Aku Shield completely blocks Freeze, Slow, Weaken, KB proc, and Toxic true damage."""
+        aku = self.sim.spawn_custom_unit({
+            "name": "Aku Foe", "hp": 1000, "speed": 0, "abilities": {"shield_hp": 500}
+        }, team=TEAM_ENEMY)
+        aku.aku_shield = 500
+
+        attacker = self.sim.spawn_custom_unit({
+            "name": "Crowd Controller", "hp": 100, "speed": 0,
+            "abilities": {
+                "freeze_prob": 100, "freeze_dur": 90,
+                "slow_prob": 100, "slow_dur": 90,
+                "weaken_prob": 100, "weaken_dur": 90,
+                "toxic_prob": 100, "toxic_hp_pct": 20,
+            }
+        }, team=TEAM_CAT)
+
+        self.sim._apply_damage(attacker, aku, direction=-1, hit_damage=100)
+        # Shield absorbed 100 damage
+        self.assertEqual(aku.aku_shield, 400)
+        # Main HP intact
+        self.assertEqual(aku.hp, 1000)
+        # All debuffs blocked
+        self.assertEqual(aku.freeze_timer, 0)
+        self.assertEqual(aku.slow_timer, 0)
+        self.assertEqual(aku.weaken_timer, 0)
+
+    def test_16_alien_barrier_blocks_status_effects_and_toxic(self):
+        """Unbroken Alien Barrier blocks damage, status effects, and Toxic true damage."""
+        barrier_unit = self.sim.spawn_custom_unit({
+            "name": "Starred Alien", "hp": 1000, "speed": 0,
+            "abilities": {"barrier_hp": 500}
+        }, team=TEAM_ENEMY)
+        barrier_unit.barrier = 500
+
+        attacker = self.sim.spawn_custom_unit({
+            "name": "Debuffer", "hp": 100, "speed": 0,
+            "abilities": {"slow_prob": 100, "slow_dur": 60, "toxic_prob": 100, "toxic_hp_pct": 25}
+        }, team=TEAM_CAT)
+
+        # 200 damage fails to exceed 500 barrier
+        self.sim._apply_damage(attacker, barrier_unit, direction=-1, hit_damage=200)
+        self.assertEqual(barrier_unit.barrier, 500)
+        self.assertEqual(barrier_unit.hp, 1000)
+        self.assertEqual(barrier_unit.slow_timer, 0)
+
+    def test_17_shield_piercing_deals_direct_damage_and_applies_status(self):
+        """Shield Piercing destroys shield and delivers full damage and status to enemy."""
+        aku = self.sim.spawn_custom_unit({
+            "name": "Aku Foe", "hp": 1000, "speed": 0, "abilities": {"shield_hp": 500}
+        }, team=TEAM_ENEMY)
+        aku.aku_shield = 500
+
+        piercer = self.sim.spawn_custom_unit({
+            "name": "Piercer", "hp": 100, "speed": 0,
+            "abilities": {"shield_pierce_prob": 100, "freeze_prob": 100, "freeze_dur": 60}
+        }, team=TEAM_CAT)
+
+        self.sim._apply_damage(piercer, aku, direction=-1, hit_damage=300)
+        # Shield pierced and set to 0
+        self.assertEqual(aku.aku_shield, 0)
+        # Full 300 damage hit enemy HP directly
+        self.assertEqual(aku.hp, 700)
+        # Freeze status successfully applied
+        self.assertEqual(aku.freeze_timer, 60)
+
+    def test_18_cat_cannon_types_parity(self):
+        """Validates authentic behavior of Slowbeam, Curseblast, and Normal Cannon."""
+        doge = self.sim.spawn_custom_unit({"name": "Doge", "hp": 1000, "speed": 0}, team=TEAM_ENEMY)
+
+        # 1. Slowbeam: 0 damage, 0 KB, pure 120-frame Slow
+        init_hp = doge.hp
+        self.sim._cannon_hit(doge, opp_team=TEAM_ENEMY, ctype="slow")
+        self.assertEqual(doge.hp, init_hp)
+        self.assertFalse(doge.is_in_knockback())
+        self.assertEqual(doge.slow_timer, 120)
+
+        # 2. Curseblast: 0 damage, 0 KB, pure 180-frame Curse
+        self.sim._cannon_hit(doge, opp_team=TEAM_ENEMY, ctype="curseblast")
+        self.assertEqual(doge.hp, init_hp)
+        self.assertFalse(doge.is_in_knockback())
+        self.assertEqual(doge.curse_timer, 180)
+
+        # 3. Normal Cannon: deals damage and knocks back normally immune enemies
+        doge.abilities["kb_immune"] = True
+        self.sim._cannon_hit(doge, opp_team=TEAM_ENEMY, ctype="normal")
+        self.assertLess(doge.hp, init_hp)
+        self.assertTrue(doge.is_in_knockback(), "Normal cannon must knock back enemies even with kb_immune")
+
+    def test_19_survive_single_kb_guaranteed_hitback(self):
+        """Unit with knockback_count = 1 (like Jiangshi Cat) STILL triggers hitback on survive."""
+        jiangshi = self.sim.spawn_custom_unit({
+            "name": "Jiangshi", "hp": 200, "knockback_count": 1, "speed": 0,
+            "abilities": {"survive_prob": 100}
+        }, team=TEAM_CAT)
+        attacker = self.sim.spawn_custom_unit({"name": "Boss", "hp": 1000, "speed": 0}, team=TEAM_ENEMY)
+
+        self.sim._apply_damage(attacker, jiangshi, direction=1, hit_damage=999)
+        self.assertEqual(jiangshi.hp, 1)
+        self.assertTrue(jiangshi.survived_lethal)
+        self.assertTrue(jiangshi.is_in_knockback(), "1-KB unit MUST trigger emergency hitback upon surviving lethal")
+
+    def test_20_curse_disables_attacks_only(self):
+        """Curse status lifts Attacks Only restriction so unit can target any entity."""
+        attacker = self.sim.spawn_custom_unit({
+            "name": "Anti-Red Only", "hp": 100, "speed": 0,
+            "target_traits": ["red"],
+            "abilities": {"attacks_only": True}
+        }, team=TEAM_CAT)
+
+        black_doge = self.sim.spawn_custom_unit({
+            "name": "Black Doge", "hp": 100, "traits": ["black"], "speed": 0
+        }, team=TEAM_ENEMY)
+
+        # Uncursed: cannot target black doge
+        self.assertFalse(self.sim._can_unit_target_opponent(attacker, black_doge))
+
+        # Cursed: Attacks Only is disabled, can target black doge!
+        attacker.curse_timer = 60
+        self.assertTrue(self.sim._can_unit_target_opponent(attacker, black_doge))
+
+    def test_21_cat_cannon_range_scaling_formula(self):
+        """Authentic PONOS formula: Level 1 = 2355 DU, +405 DU / level, Level 10 = 6000 DU."""
+        sim_lv1 = BattleSimulation(base_levels={"cannon_range": 1})
+        self.assertEqual(sim_lv1.cannon_ranges[TEAM_CAT], 2355)
+
+        sim_lv5 = BattleSimulation(base_levels={"cannon_range": 5})
+        self.assertEqual(sim_lv5.cannon_ranges[TEAM_CAT], 2355 + 405 * 4)
+
+        sim_lv10 = BattleSimulation(base_levels={"cannon_range": 10})
+        self.assertEqual(sim_lv10.cannon_ranges[TEAM_CAT], 6000)
+
 if __name__ == "__main__":
     unittest.main()
