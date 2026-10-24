@@ -420,9 +420,13 @@ class TestBattleParityMechanics(unittest.TestCase):
         }, team=TEAM_ENEMY)
         aku_enemy.aku_shield = 0 # Shield broken
 
-        # Taking knockback
+        # Authentic PONOS rule: Non-damage knockbacks (ability/cannon) DO NOT regenerate Aku Shield!
         self.sim._knockback(aku_enemy, "kb")
-        self.assertEqual(aku_enemy.aku_shield, 100) # 50% of 200 = 100
+        self.assertEqual(aku_enemy.aku_shield, 0, "Ability knockback must NOT regenerate Aku Shield!")
+
+        # Damage-based knockback (hitback) triggers authentic shield regeneration
+        self.sim._knockback(aku_enemy, "hitback")
+        self.assertEqual(aku_enemy.aku_shield, 100, "Damage-based hitback must regenerate Aku Shield!")
         # Check shield_regen event
         self.assertTrue(any(e.get("type") == "shield_regen" for e in self.sim.visual_events))
 

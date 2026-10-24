@@ -556,7 +556,7 @@ class BattleSimulation:
         # upon recovery once in range (rebound effect).
         u.cycle_timer = 0
         u.attack_cooldown_timer = 0
-        if kind == "kb" and u.abilities.get("shield_hp", 0) > 0 and u.abilities.get("shield_regen_pct", 0) > 0 and not getattr(u, "is_dying", False):
+        if kind == "hitback" and u.abilities.get("shield_hp", 0) > 0 and u.abilities.get("shield_regen_pct", 0) > 0 and not getattr(u, "is_dying", False):
             regen_pct = u.abilities["shield_regen_pct"]
             base_shield = u.abilities["shield_hp"]
             u.aku_shield = max(1, (base_shield * regen_pct) // 100)
@@ -1014,7 +1014,7 @@ class BattleSimulation:
                     # Free to advance [VERIFIED 0x0095a494 return 1]
                     # In PONOS Battle Cats CSV, speed is in half-pixels per frame (speed * 0.5 at 30 FPS)
                     unit.is_moving = True
-                    effective_speed = 0.5 if unit.is_slowed() else max(0.5, unit.speed * 0.5)
+                    effective_speed = 0.25 if unit.is_slowed() else max(0.5, unit.speed * 0.5)
                     unit.pos_x += direction * effective_speed
                     unit.pos_x = max(c_enemy_x, min(c_cat_x, unit.pos_x))
                     if unit.anim_state != "walk":
@@ -1136,9 +1136,10 @@ class BattleSimulation:
                     unit.is_winding_up = True
                     unit.current_hit_idx = 0
                     first_pre = int(unit.attack_hits[0].get("foreswing", unit.attack_windup)) if unit.attack_hits else unit.attack_windup
+                    last_pre = int(unit.attack_hits[-1].get("foreswing", unit.attack_windup)) if unit.attack_hits else unit.attack_windup
                     unit.windup_timer = max(1, first_pre)
-                    # PONOS attack frequency = foreswing + max(backswing, TBA - 1) = max(anim_len, pre1 + TBA - 1)
-                    unit.cycle_timer = max(int(unit.attack_anim_len), first_pre + max(0, int(unit.attack_interval) - 1))
+                    # PONOS attack frequency = Attack Length + max(Backswing, TBA - 1) = max(anim_len, last_pre + TBA - 1)
+                    unit.cycle_timer = max(int(unit.attack_anim_len), last_pre + max(0, int(unit.attack_interval) - 1))
                     unit.attack_cooldown_timer = unit.cycle_timer
                     unit.anim_state = "attack"
                     unit.anim_frame = 0.0
@@ -1371,7 +1372,7 @@ class BattleSimulation:
             if "colossus" in target.traits and attacker.abilities.get("colossus_slayer", False):
                 raw_damage = NativeDamageEngine.calculate_damage(raw_damage, 1600)
             if "behemoth" in target.traits and attacker.abilities.get("behemoth_slayer", False):
-                raw_damage = NativeDamageEngine.calculate_damage(raw_damage, 1500)
+                raw_damage = NativeDamageEngine.calculate_damage(raw_damage, 2500)  # Official PONOS 2.5x damage against Behemoths
 
         # Target's own Insanely Tough / Resistant / Strong defense against attacker's traits (disabled if target is cursed)
         target_matches_attacker = (target.slot != SLOT_CASTLE) and any(t in attacker.traits for t in target.target_traits)
@@ -1414,13 +1415,16 @@ class BattleSimulation:
         if (target.slot != SLOT_CASTLE) and ("metal" in target.traits or target.abilities.get("is_metal", False)) and not is_crit:
             damage = 1
 
-        # 5b. Trait-Targeted Dodge (Col 84/85): on proc the unit becomes untouchable by those traits for `dodge_dur` frames
+        # 5b. Trait-Targeted Dodge (Col 84/85 & Behemoth Slayer 5% passive dodge)
         dodged = False
-        if target_matches_attacker and not target_cursed:
-            if target.dodge_timer > 0:
-                dodged = True
-            elif target.abilities.get("dodge_prob", 0) > 0 and self.rng.randint(1, 100) <= target.abilities.get("dodge_prob", 0):
+        if target.dodge_timer > 0:
+            dodged = True
+        elif target_matches_attacker and not target_cursed:
+            if target.abilities.get("dodge_prob", 0) > 0 and self.rng.randint(1, 100) <= target.abilities.get("dodge_prob", 0):
                 target.dodge_timer = int(target.abilities.get("dodge_dur", 0))
+                dodged = True
+        elif not target_cursed and "behemoth" in attacker.traits and target.abilities.get("behemoth_slayer", False):
+            if self.rng.randint(1, 100) <= 5:  # 5% innate dodge against Behemoth attacks
                 dodged = True
         if dodged:
             self._emit_event({"type": "dodge", "x": target.pos_x, "team": target.team})
@@ -1559,8 +1563,8 @@ class BattleSimulation:
             })
 
     def _update_deaths_and_castles(self):
-        """Authentic death sequence (0x008b6f50): a unit reaching 0 HP becomes untargetable, is knocked back
-        (death knockback), and only after the knockback finishes does it vanish into a soul (or corpse if zombie)."""
+        """Authentic Battle_KillUnit (0x008b6f50): a unit reaching 0 HP dies immediately on the spot,
+        clearing the slot, releasing soul particles, and awarding money with ZERO artificial knockback sliding."""
         for team in (TEAM_CAT, TEAM_ENEMY):
             opp_team = 1 - team
             for slot in range(1, MAX_UNITS_PER_TEAM):
