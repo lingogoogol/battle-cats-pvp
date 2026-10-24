@@ -117,12 +117,12 @@ def serialize_rig_to_dict(base_dir: str, code: str, url_prefix: str = "/assets/"
 class BattleRoom:
     """Represents an active Room identified by a Room Code (`房號`, e.g. '8492')."""
 
-    def __init__(self, room_code: str, host_name: str = "P1 房主", vs_ai: bool = False, host_deck: Optional[List[str]] = None, cat_level: int = 1):
+    def __init__(self, room_code: str, host_name: str = "P1 房主", vs_ai: bool = False, host_deck: Optional[List[str]] = None, cat_level: int = 30):
         self.room_code = room_code
         self.host_name = host_name
         self.guest_name = "AI 電腦對手" if vs_ai else ""
         self.vs_ai = vs_ai
-        self.cat_level = max(1, min(50, int(cat_level or 1)))
+        self.cat_level = max(1, min(50, int(cat_level or 30)))
         self.created_at = time.time()
         self.last_active = time.time()
         self.lock = threading.Lock()

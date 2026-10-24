@@ -560,7 +560,7 @@ class BattleSimulation:
             if not u.abilities.get("kb_immune", False):
                 self._knockback(u, "cannon")
                 self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
-            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team})
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
         elif ctype == "thunderbolt":
             dmg = self.cannon_power
@@ -570,7 +570,7 @@ class BattleSimulation:
                 u.is_winding_up = False
                 u.windup_timer = 0
                 u.backswing_timer = 0
-            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team})
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
         elif ctype == "waterblast":
             if "metal" in u.traits or u.abilities.get("is_metal", False):
@@ -581,7 +581,7 @@ class BattleSimulation:
             if not u.abilities.get("kb_immune", False):
                 self._knockback(u, "cannon")
                 self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
-            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team})
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
         elif ctype == "breakerblast":
             if getattr(u, "aku_shield", 0) > 0:
@@ -595,7 +595,7 @@ class BattleSimulation:
             if not u.abilities.get("kb_immune", False):
                 self._knockback(u, "cannon")
                 self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
-            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team})
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
         elif ctype == "curseblast":
             dmg = max(1, self.cannon_power // 3)
@@ -606,7 +606,7 @@ class BattleSimulation:
             if not u.abilities.get("kb_immune", False):
                 self._knockback(u, "cannon")
                 self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
-            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team})
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
         else: # "normal"
             dmg = 1 if ("metal" in u.traits or u.abilities.get("is_metal")) else self.cannon_power
@@ -614,7 +614,7 @@ class BattleSimulation:
             if not u.abilities.get("kb_immune", False):
                 self._knockback(u, "cannon")
                 self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
-            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "is_crit": True, "team": opp_team})
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "is_crit": True, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
     def find_free_slot(self, team: int) -> Optional[int]:
         """Finds first empty slot in [1, 50]. Slot 0 reserved for Castle."""
@@ -1471,7 +1471,9 @@ class BattleSimulation:
             "damage": damage,
             "is_crit": is_crit,
             "team": target.team,
-            "target_is_castle": (target.slot == SLOT_CASTLE)
+            "target_is_castle": (target.slot == SLOT_CASTLE),
+            "target_id": f"{target.team}_{target.slot}",
+            "attacker_id": f"{attacker.team}_{attacker.slot}",
         })
 
         if target.slot == SLOT_CASTLE:

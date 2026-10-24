@@ -50,6 +50,7 @@ class UnitSpriteManager:
         self._init_skeletal_players()
         self._init_all_cats()
         self._init_all_enemies()
+        self.hit_flash_timers: Dict[str, int] = {}
 
     def _load_rig(self, base_dir: str, code: str) -> Optional[PonosAnimationPlayer]:
         png_p = os.path.join(base_dir, f"{code}.png")
@@ -145,6 +146,9 @@ class UnitSpriteManager:
             if p is not None:
                 self.enemy_sprites[eid] = self._bake_skeletal_frames(p, flip_h=False, scale=0.65)
 
+    def trigger_hit_flash(self, unit_id: str, frames: int = 3):
+        self.hit_flash_timers[unit_id] = frames
+
     def get_player_for_unit(self, unit: Any) -> Optional[PonosAnimationPlayer]:
         if isinstance(unit, str):
             from game_project.core.unit_data import CAT_REGISTRY, ENEMY_REGISTRY
@@ -227,7 +231,11 @@ class UnitSpriteManager:
             base_scale = unit.spec.get("render_scale", 0.62)
             z_off = (unit.slot % 5) * 2 - 4
             visual_sx = sx + (-48 if unit.team == TEAM_CAT else 48)
-            skel.render(surface, visual_sx, sy + 4 + z_off, scale=base_scale, flip_h=flip_h)
+            uid = f"{unit.team}_{unit.slot}"
+            hit_flash = self.hit_flash_timers.get(uid, 0) > 0
+            if hit_flash:
+                self.hit_flash_timers[uid] -= 1
+            skel.render(surface, visual_sx, sy + 4 + z_off, scale=base_scale, flip_h=flip_h, hit_flash=hit_flash)
             return
 
     def _resolve_cat_id(self, unit: SimUnit) -> int:

@@ -23,11 +23,11 @@ TEAM_ENEMY = 1
 KNOCKBACK_FRAMES_DEFAULT = 11
 KNOCKBACK_SPEED_PX = 15  # legacy average speed (165 / 11)
 KB_SPECS = {
-    "hitback": (330.0, 11),  # Authentic PONOS HP-threshold heavy damage knockback (~330 units over 11 frames)
-    "kb": (165.0, 11),       # Authentic PONOS ability-proc knockback (~165 units over 11 frames)
-    "cannon": (55.0, 8),     # Authentic PONOS Cat Cannon mini-knockback (~55 units over 8 frames)
-    "death": (165.0, 11),    # Authentic PONOS death knockback before soul release (11 frames)
-    "boss": (705.0, 47),     # Authentic PONOS Boss emergence shockwave (~705 units over 47 frames)
+    "hitback": (85.0, 11),  # Authentic PONOS HP-threshold heavy damage knockback (~85px over 11 frames, ~1.5-2 body lengths)
+    "kb": (48.0, 11),       # Authentic PONOS ability-proc knockback (~48px over 11 frames, ~1 body length)
+    "cannon": (25.0, 8),    # Authentic PONOS Cat Cannon mini-knockback (~25px over 8 frames)
+    "death": (48.0, 11),    # Authentic PONOS death stagger knockback before soul release (11 frames)
+    "boss": (180.0, 47),    # Authentic PONOS Boss emergence shockwave (~180px over 47 frames)
 }
 
 # Wave attack geometry (W_PROG / W_TIME / initial offset / hitbox width)

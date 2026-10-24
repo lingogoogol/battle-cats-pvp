@@ -690,6 +690,9 @@ class BattleRenderer(BaseRenderer):
         for ev in events:
             etype = ev.get("type")
             if etype == "damage":
+                tid = ev.get("target_id")
+                if tid:
+                    self.unit_sprite_mgr.trigger_hit_flash(tid, 3)
                 x = ev.get("x", 0)
                 is_crit = ev.get("is_crit", False)
                 rad = ev.get("radius", 24)

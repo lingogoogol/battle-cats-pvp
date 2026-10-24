@@ -670,10 +670,10 @@
             <span style="font-size:14px;color:var(--gold-bright);font-weight:900;" id="deckCountLabel">已選 10 / 10</span>
             <label style="font-size:12px;color:#b8c7e0;font-weight:800;">貓咪等級：</label>
             <select id="catLevelSelect" onchange="changeCatLevel(this.value)" style="padding:4px 8px;font-size:12px;font-weight:800;border-color:var(--gold);">
-              <option value="1" selected>Lv.1 (官方 CSV 原始數值 1.0x)</option>
+              <option value="1">Lv.1 (官方 CSV 原始數值 1.0x)</option>
               <option value="10">Lv.10 (2.8x)</option>
               <option value="20">Lv.20 (4.8x)</option>
-              <option value="30">Lv.30 (6.8x 實戰標準)</option>
+              <option value="30" selected>Lv.30 (6.8x 實戰標準)</option>
               <option value="50">Lv.50 (10.8x 滿等)</option>
             </select>
             <button type="button" class="preset-btn" onclick="applyDeckPreset('all_star')">全稀有度精銳隊</button>

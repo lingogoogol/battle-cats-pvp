@@ -34,13 +34,15 @@ let activeRow = 0; // 0 = slots 0..4, 1 = slots 5..9
 let clientTick = 0;
 let previewFrame = 0;
 let selectedRarityFilter = "ALL";
-let selectedCatLevel = 1;
+let selectedCatLevel = 30;
 let inspectedItem = null;
 let formationPreviewAnim = "walk";
 
 // Active Visual FX on Client Canvas
 let fxHitSparks = [];
 let fxDeathSouls = [];
+let fxDust = [];
+let castleShake = { 0: 0, 1: 0 };
 let fxCannonBeams = [];
 let fxFloatingTexts = [];
 let fxWaves = [];
@@ -844,6 +846,8 @@ function enterBattleRoom(roomCode, team, initialState) {
   roomState = initialState;
   fxHitSparks = [];
   fxDeathSouls = [];
+  fxDust = [];
+  castleShake = { 0: 0, 1: 0 };
   fxCannonBeams = [];
   fxFloatingTexts = [];
   fxWaves = [];
@@ -962,14 +966,27 @@ function onReceiveRoomState(st) {
       const ev = item.ev;
       if (!ev) return;
       if (ev.type === "damage") {
+        if (ev.target_id) {
+          const vis = unitVisualState.get(ev.target_id);
+          if (vis) vis.hitFlash = 3;
+        }
+        if (ev.target_is_castle) {
+          castleShake[ev.team] = 8;
+          fxDust.push({ x: ev.x, y: GROUND_Y - 30, age: 0, maxLife: 15, isCastle: true });
+          AUDIO.playSFX("castle_hit");
+        }
         // Authentic PONOS Battle Cats: NO floating damage text pops up on attack;
         // only the official 000_a.png hit spark and critical hit star appear.
         const jy = (Math.random() - 0.5) * 8;
-        const hitX = ev.x + (ev.team === TEAM_CAT ? -32 : 32);
+        const hitX = ev.target_is_castle
+          ? (ev.team === TEAM_CAT ? ev.x - 50 : ev.x + 50)
+          : (ev.team === TEAM_CAT
+            ? ev.x - 48 - (ev.radius || 20) * 0.5
+            : ev.x + 48 + (ev.radius || 20) * 0.5);
         const rad = ev.radius || 24;
         const targetY = Math.max(GROUND_Y - 120, GROUND_Y - rad - 6 + jy);
         fxHitSparks.push({
-          x: hitX + (Math.random() - 0.5) * 12,
+          x: hitX + (Math.random() - 0.5) * 8,
           y: targetY,
           isCrit: !!ev.is_crit,
           age: 0,
@@ -977,17 +994,24 @@ function onReceiveRoomState(st) {
         if (ev.is_crit) {
           AUDIO.playSFX("crit");
           cameraShake = { timer: 12, intensity: 6.0, dx: 0, dy: 0 };
-        } else {
+        } else if (!ev.target_is_castle) {
           AUDIO.playSFX("hit");
         }
       } else if (ev.type === "knockback") {
         const rad = ev.radius || 20;
         const targetY = Math.max(GROUND_Y - 120, GROUND_Y - rad - 4);
         fxHitSparks.push({
-          x: ev.x,
+          x: ev.x + (ev.team === TEAM_CAT ? -48 : 48),
           y: targetY,
           isCrit: false,
           age: 0,
+        });
+        fxDust.push({
+          x: ev.x + (ev.team === TEAM_CAT ? -48 : 48),
+          y: GROUND_Y - 4,
+          age: 0,
+          maxLife: 12,
+          isCastle: false
         });
         AUDIO.playSFX("knockback");
       } else if (ev.type === "death") {
@@ -1544,8 +1568,10 @@ function renderBattleScene() {
   // 2. Castles & Modular Cat Cannon Turret
   const team0 = st && st.teams && st.teams["0"];
   const team1 = st && st.teams && st.teams["1"];
-  const rightCastleX = worldToScreenX((team0 && team0.castle_x) || stageLen - 120);
-  const leftCastleX = worldToScreenX((team1 && team1.castle_x) || 120);
+  const rShake = castleShake[TEAM_CAT] > 0 ? (Math.random() - 0.5) * 8 : 0;
+  const lShake = castleShake[TEAM_ENEMY] > 0 ? (Math.random() - 0.5) * 8 : 0;
+  const rightCastleX = worldToScreenX((team0 && team0.castle_x) || stageLen - 120) + rShake;
+  const leftCastleX = worldToScreenX((team1 && team1.castle_x) || 120) + lShake;
 
   const ratio1 = team1 ? Math.min(1, team1.cannon_charge / Math.max(1, team1.cannon_max)) : 0;
   const ratio0 = team0 ? Math.min(1, team0.cannon_charge / Math.max(1, team0.cannon_max)) : 0;
@@ -1623,7 +1649,16 @@ function renderBattleScene() {
       const rigObj = RIGS[u.rig] || RIGS["000_f"];
       const isEnemyRig = rigObj ? !!rigObj.is_enemy : u.rig.includes("_e");
       const flipH = isEnemyRig ? u.team === TEAM_CAT : u.team === TEAM_ENEMY;
+      const doFlash = vis && vis.hitFlash > 0;
+      if (doFlash) {
+        vis.hitFlash--;
+        ctx.save();
+        ctx.filter = "brightness(2.2) contrast(1.1)";
+      }
       renderSkeletalRig(ctx, u.rig, u.anim, drawAf, sx, GROUND_Y + 4 + zOff, u.scale || 0.62, flipH);
+      if (doFlash) {
+        ctx.restore();
+      }
 
       // Starred Alien Barrier
       if (!u.is_dying && u.barrier > 0) {
@@ -1783,6 +1818,12 @@ function advanceClientFX30Fps() {
     fxHitSparks[i].age++;
     if (fxHitSparks[i].age >= 11) fxHitSparks.splice(i, 1);
   }
+  for (let i = fxDust.length - 1; i >= 0; i--) {
+    fxDust[i].age++;
+    if (fxDust[i].age >= fxDust[i].maxLife) fxDust.splice(i, 1);
+  }
+  if (castleShake[0] > 0) castleShake[0]--;
+  if (castleShake[1] > 0) castleShake[1]--;
   for (let i = fxDeathSouls.length - 1; i >= 0; i--) {
     fxDeathSouls[i].age++;
     if (fxDeathSouls[i].age >= 45) fxDeathSouls.splice(i, 1);
@@ -1902,6 +1943,35 @@ function renderCombatFX(ctx, worldToScreenX) {
         const pc = pillarCuts[cIdx];
         drawSubImage(ctx, IMAGES.castle_beam, pc[0], pc[1], pc[2], pc[3], psx - pc[4] / 2, GROUND_Y - pc[5] + 8, pc[4], pc[5]);
       }
+    }
+  }
+
+  // 2.5 Dust Puffs (Feet knockback & Castle impacts)
+  for (let i = fxDust.length - 1; i >= 0; i--) {
+    const d = fxDust[i];
+    const sx = worldToScreenX(d.x);
+    const progress = d.age / d.maxLife;
+    const alpha = Math.max(0, 1.0 - progress);
+    if (d.isCastle) {
+      ctx.save();
+      ctx.fillStyle = `rgba(200, 190, 175, ${0.7 * alpha})`;
+      for (let k = 0; k < 4; k++) {
+        const cx = sx + (Math.sin(k + d.age) * 20);
+        const cy = d.y - progress * 25 + k * 8;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 5 + progress * 8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    } else {
+      const r = 5 + progress * 14;
+      ctx.save();
+      ctx.fillStyle = `rgba(225, 220, 205, ${0.65 * alpha})`;
+      ctx.beginPath();
+      ctx.arc(sx - progress * 10, d.y - progress * 4, r, 0, Math.PI * 2);
+      ctx.arc(sx + progress * 8, d.y - progress * 3, r * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
   }
 
@@ -2529,14 +2599,12 @@ function renderLoop(now = performance.now()) {
       if (u.anim === "walk" && !(u.frz > 0)) {
         const effSpd = u.slw > 0 ? 0.5 : Math.max(0.5, (u.spd || 10.0) * 0.5);
         vis.renderX += dir * effSpd * df;
-      } else if (u.anim === "kb") {
-        vis.renderX -= dir * 7.0 * df;
       }
       const errX = vis.targetX - vis.renderX;
-      if (Math.abs(errX) > 80.0) {
+      if (Math.abs(errX) > 50.0) {
         vis.renderX = vis.targetX;
       } else {
-        vis.renderX += errX * Math.min(1.0, dt * 18.0);
+        vis.renderX += errX * Math.min(1.0, dt * 25.0);
       }
     });
   }

@@ -378,7 +378,7 @@ class PonosAnimationPlayer:
     def update(self, dt_frames: float = 1.0):
         self.current_frame += dt_frames
 
-    def render(self, surface: pygame.Surface, root_x: int, root_y: int, scale: float = 1.0, flip_h: bool = False):
+    def render(self, surface: pygame.Surface, root_x: int, root_y: int, scale: float = 1.0, flip_h: bool = False, hit_flash: bool = False):
         anim = self.animations.get(self.current_anim_name)
         su = float(self.mamodel.scale_unit)
         au = float(self.mamodel.angle_unit)
@@ -595,7 +595,13 @@ class PonosAnimationPlayer:
             draw_x = int(round(world_x - rot_pivot_x))
             draw_y = int(round(world_y - rot_pivot_y))
 
-            if part.glow in (1, 2, 3, -1):
+            if hit_flash:
+                flash_surf = rotated_surf.copy()
+                flash_surf.fill((160, 160, 160), special_flags=pygame.BLEND_RGB_ADD)
+                if alpha < 0.99:
+                    flash_surf.set_alpha(int(alpha * 255))
+                surface.blit(flash_surf, (draw_x, draw_y))
+            elif part.glow in (1, 2, 3, -1):
                 premult = pygame.Surface(rotated_surf.get_size())
                 if alpha < 0.99:
                     rotated_surf = rotated_surf.copy()
