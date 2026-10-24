@@ -692,14 +692,15 @@ class BattleRenderer(BaseRenderer):
             if etype == "damage":
                 x = ev.get("x", 0)
                 is_crit = ev.get("is_crit", False)
+                rad = ev.get("radius", 24)
+                target_y = max(GROUND_Y - 120, GROUND_Y - rad - 6 + random.uniform(-4, 4))
                 color = COLOR_GOLD if is_crit else COLOR_WHITE
-                # Authentic PONOS Battle Cats does NOT pop up floating damage numbers on attack;
-                # only the official 000_a.png hit spark and critical star appear.
+                # Authentic PONOS Battle Cats hit spark (000_a.png Cuts 8..12) and Critical Star (Cuts 26..27)
                 if self.hit_explosion_frames:
                     self.hit_explosions.append(
                         HitExplosionFX(
-                            x + random.uniform(-8, 8),
-                            GROUND_Y - 28 + random.uniform(-8, 6),
+                            x + random.uniform(-6, 6),
+                            target_y,
                             self.hit_explosion_frames,
                             self.crit_star_frames,
                             is_crit=is_crit
@@ -709,16 +710,21 @@ class BattleRenderer(BaseRenderer):
                     for _ in range(4):
                         vx = random.uniform(-3, 3)
                         vy = random.uniform(-4, 0)
-                        self.particles.append(ParticleFX(x, GROUND_Y - 20, vx, vy, color, 3, 15))
+                        self.particles.append(ParticleFX(x, target_y, vx, vy, color, 3, 15))
                 if ev.get("target_is_castle"):
                     self.sound_mgr.play_sfx("castle_hit")
+                elif is_crit:
+                    self.sound_mgr.play_sfx("critical")
+                    self.camera.trigger_shake(frames=12, intensity=6.0)
                 else:
                     self.sound_mgr.play_sfx("hit")
             elif etype == "knockback":
                 x = ev.get("x", 0)
+                rad = ev.get("radius", 20)
+                target_y = max(GROUND_Y - 120, GROUND_Y - rad - 4)
                 if self.hit_explosion_frames:
                     self.hit_explosions.append(
-                        HitExplosionFX(x, GROUND_Y - 18, self.hit_explosion_frames, is_crit=False)
+                        HitExplosionFX(x, target_y, self.hit_explosion_frames, is_crit=False)
                     )
                 self.sound_mgr.play_sfx("knockback")
             elif etype == "death":

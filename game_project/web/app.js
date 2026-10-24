@@ -65,6 +65,8 @@ const AUDIO = {
       const fileMap = {
         deploy: "/audio/snd168.wav",
         hit: "/audio/snd169.wav",
+        crit: "/audio/snd170.wav",
+        critical: "/audio/snd170.wav",
         knockback: "/audio/snd139.wav",
         cannon_fire: "/audio/snd191.wav",
         wallet_up: "/audio/snd188.wav",
@@ -956,15 +958,32 @@ function onReceiveRoomState(st) {
       if (ev.type === "damage") {
         // Authentic PONOS Battle Cats: NO floating damage text pops up on attack;
         // only the official 000_a.png hit spark and critical hit star appear.
-        const jy = (Math.random() - 0.5) * 18;
+        const jy = (Math.random() - 0.5) * 8;
         const hitX = ev.x + (ev.team === TEAM_CAT ? -32 : 32);
+        const rad = ev.radius || 24;
+        const targetY = Math.max(GROUND_Y - 120, GROUND_Y - rad - 6 + jy);
         fxHitSparks.push({
-          x: hitX + (Math.random() - 0.5) * 14,
-          y: GROUND_Y - 28 + jy,
+          x: hitX + (Math.random() - 0.5) * 12,
+          y: targetY,
           isCrit: !!ev.is_crit,
           age: 0,
         });
-        AUDIO.playSFX("hit");
+        if (ev.is_crit) {
+          AUDIO.playSFX("crit");
+          cameraShake = { timer: 12, intensity: 6.0, dx: 0, dy: 0 };
+        } else {
+          AUDIO.playSFX("hit");
+        }
+      } else if (ev.type === "knockback") {
+        const rad = ev.radius || 20;
+        const targetY = Math.max(GROUND_Y - 120, GROUND_Y - rad - 4);
+        fxHitSparks.push({
+          x: ev.x,
+          y: targetY,
+          isCrit: false,
+          age: 0,
+        });
+        AUDIO.playSFX("knockback");
       } else if (ev.type === "death") {
         fxDeathSouls.push({
           x: ev.x,

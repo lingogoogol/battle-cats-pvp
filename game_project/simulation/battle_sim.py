@@ -415,9 +415,9 @@ class BattleSimulation:
         dmg = 1 if ("metal" in u.traits or u.abilities.get("is_metal")) else self.cannon_power
         u.hp -= dmg
         if not u.abilities.get("kb_immune", False):
-            self._knockback(u, "kb")
-        self._emit_event({"type": "damage", "x": u.pos_x, "damage": dmg, "is_crit": True, "team": opp_team})
-        self._emit_event({"type": "knockback", "x": u.pos_x, "team": opp_team})
+            self._knockback(u, "cannon")
+            self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
+        self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "is_crit": True, "team": opp_team})
 
     def find_free_slot(self, team: int) -> Optional[int]:
         """Finds first empty slot in [1, 50]. Slot 0 reserved for Castle."""
@@ -1228,6 +1228,7 @@ class BattleSimulation:
         self._emit_event({
             "type": "damage",
             "x": target.pos_x,
+            "radius": target.radius,
             "damage": damage,
             "is_crit": is_crit,
             "team": target.team,
@@ -1243,6 +1244,7 @@ class BattleSimulation:
             kb_prob = attacker.abilities.get("kb_prob", 0)
             if kb_prob > 0 and not target.abilities.get("kb_immune", False) and self.rng.randint(1, 100) <= kb_prob:
                 self._knockback(target, "kb")
+                self._emit_event({"type": "knockback", "x": target.pos_x, "radius": target.radius, "team": target.team, "kind": "kb"})
 
             freeze_prob = attacker.abilities.get("freeze_prob", 0)
             freeze_dur = attacker.abilities.get("freeze_dur", 0)
@@ -1298,9 +1300,9 @@ class BattleSimulation:
         expected_kbs = int(damage_taken // max(1.0, target.kb_threshold))
         if expected_kbs > target.kb_points_taken and target.hp > 0:
             target.kb_points_taken = expected_kbs
-            self._knockback(target, "kb")
+            self._knockback(target, "hitback")
             self._emit_event({
-                "type": "knockback", "x": target.pos_x, "team": target.team
+                "type": "knockback", "x": target.pos_x, "radius": target.radius, "team": target.team, "kind": "hitback"
             })
 
     def _update_deaths_and_castles(self):

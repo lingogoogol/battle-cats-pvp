@@ -53,6 +53,8 @@ class SoundManager:
             "cancel": "snd167.wav",
             "deploy": "snd168.wav",
             "hit": "snd169.wav",
+            "critical": "snd170.wav",
+            "crit": "snd170.wav",
             "castle_hit": "snd137.wav",
             "knockback": "snd139.wav",
             "wallet_up": "snd188.wav",
