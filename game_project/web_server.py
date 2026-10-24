@@ -626,6 +626,16 @@ class BattleCatsWebHandler(BaseHTTPRequestHandler):
                 candidate = os.path.join(ENEMY_186_DIR, "186_e.png")
             return self._send_file(candidate, "image/png")
 
+        if path.startswith("/audio/"):
+            rel = path[len("/audio/"):]
+            if ".." in rel or "/" in rel or "\\" in rel:
+                self.send_error(403)
+                return
+            audio_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "audio")
+            candidate = os.path.join(audio_dir, rel)
+            ctype = "audio/ogg" if rel.endswith(".ogg") else ("audio/wav" if rel.endswith(".wav") else "application/octet-stream")
+            return self._send_file(candidate, ctype)
+
         if path == "/api/bootstrap":
             CustomUnitLoader.load_all()
             base_cats = []

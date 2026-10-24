@@ -54,6 +54,57 @@ let fxShieldShatters = [];
 let cameraShake = { timer: 0, intensity: 0, dx: 0, dy: 0 };
 let unitVisualState = new Map();
 
+// Authentic Audio Player for Web Client
+const AUDIO = {
+  enabled: true,
+  sounds: {},
+  bgm: null,
+  playSFX(name) {
+    if (!this.enabled) return;
+    try {
+      const fileMap = {
+        deploy: "/audio/snd168.wav",
+        hit: "/audio/snd169.wav",
+        knockback: "/audio/snd139.wav",
+        cannon_fire: "/audio/snd191.wav",
+        wallet_up: "/audio/snd188.wav",
+        click: "/audio/snd167.wav",
+        victory: "/audio/snd170.wav",
+        defeat: "/audio/snd194.wav"
+      };
+      if (fileMap[name]) {
+        if (!this.sounds[name]) {
+          this.sounds[name] = new Audio(fileMap[name]);
+          this.sounds[name].volume = 0.55;
+        }
+        const a = this.sounds[name].cloneNode();
+        a.volume = 0.55;
+        a.play().catch(() => {});
+      }
+    } catch (_) {}
+  },
+  playBGM(track = "battle") {
+    if (!this.enabled) return;
+    try {
+      const trackFile = track === "boss" ? "/audio/snd062.ogg" : "/audio/snd034.ogg";
+      if (!this.bgm) {
+        this.bgm = new Audio(trackFile);
+        this.bgm.loop = true;
+        this.bgm.volume = 0.35;
+      } else if (this.bgm.src && !this.bgm.src.endsWith(trackFile)) {
+        this.bgm.pause();
+        this.bgm.src = trackFile;
+      }
+      this.bgm.play().catch(() => {});
+    } catch (_) {}
+  },
+  stopBGM() {
+    if (this.bgm) {
+      try { this.bgm.pause(); } catch (_) {}
+    }
+  }
+};
+
 // Preload Official Textures
 const CORE_TEXTURES = {
   bg000: "/assets/bg000.png",
@@ -803,6 +854,7 @@ function enterBattleRoom(roomCode, team, initialState) {
 
   document.getElementById("currentRoomCodeDisplay").textContent = roomCode;
   switchTab("battle");
+  AUDIO.playBGM("battle");
 
   // Connect to SSE stream for 30 FPS updates
   if (eventSource) {
@@ -912,6 +964,7 @@ function onReceiveRoomState(st) {
           isCrit: !!ev.is_crit,
           age: 0,
         });
+        AUDIO.playSFX("hit");
       } else if (ev.type === "death") {
         fxDeathSouls.push({
           x: ev.x,
@@ -965,6 +1018,8 @@ function onReceiveRoomState(st) {
         });
         cameraShake.timer = 20;
         cameraShake.intensity = 12;
+        AUDIO.playBGM("boss");
+        AUDIO.playSFX("knockback");
         showToast(`⚠️ 頭目來襲！【${ev.boss_name || "BOSS"}】登場！`);
       } else if (ev.type === "toxic") {
         fxToxic.push({
@@ -992,6 +1047,7 @@ function onReceiveRoomState(st) {
           age: 0,
           maxLife: 16,
         });
+        AUDIO.playSFX("hit");
       } else if (ev.type === "barrier_break") {
         fxShieldShatters.push({
           x: ev.x,
@@ -999,6 +1055,11 @@ function onReceiveRoomState(st) {
           age: 0,
           maxLife: 16,
         });
+        AUDIO.playSFX("hit");
+      } else if (ev.type === "game_over") {
+        AUDIO.stopBGM();
+        if (ev.winner === myTeam) AUDIO.playSFX("victory");
+        else AUDIO.playSFX("defeat");
       } else if (ev.type === "nyancombo_activate") {
         const combos = ev.combos || [];
         combos.forEach(c => {
@@ -1011,6 +1072,10 @@ function onReceiveRoomState(st) {
 
 async function sendRoomAction(action, payload = null) {
   if (!currentRoomCode) return;
+  if (action === "SPAWN_UNIT") AUDIO.playSFX("deploy");
+  else if (action === "UPGRADE_WORKER") AUDIO.playSFX("wallet_up");
+  else if (action === "FIRE_CANNON") AUDIO.playSFX("cannon_fire");
+  else AUDIO.playSFX("click");
   try {
     await fetch("/api/room/action", {
       method: "POST",

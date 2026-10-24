@@ -96,11 +96,12 @@ class SoundManager:
             return
 
         bgm_map = {
-            "battle": "snd000.ogg",
-            "eoc_battle": "snd000.ogg",
-            "menu": "snd062.ogg",
-            "stage_select": "snd062.ogg",
-            "boss": "snd034.ogg"
+            "menu": "snd000.ogg",
+            "stage_select": "snd000.ogg",
+            "battle": "snd034.ogg",
+            "eoc_battle": "snd034.ogg",
+            "boss": "snd062.ogg",
+            "moon_boss": "snd062.ogg"
         }
 
         fn = bgm_map.get(track_name, track_name)
