@@ -17,20 +17,17 @@ TEAM_CAT = 0
 TEAM_ENEMY = 1
 
 # Knockback & motion constants.
-# Native RE (Phase 10-12) verified the per-frame KB timer decrement (+0x83AD4, `add w10, -1`);
-# distance/duration tables follow authentic PONOS engine & BCU specifications:
-#   - HP-threshold hitback: 345 Distance Units (DU) over 24 frames (~14.375 DU/frame)
-#   - Ability-proc knockback: 165 Distance Units (DU) over 11 frames (15.0 DU/frame)
-#   - Cat Cannon / Sniper: 55 Distance Units (DU) over 11 frames (5.0 DU/frame)
-#   - Death stagger: 165 Distance Units (DU) over 11 frames
-#   - Boss shockwave: 735 Distance Units (DU) over 47 frames (~15.64 DU/frame)
+# Native RE (Phase 10-14) and official Battle Cats engine specifications (BCU / tbcml):
+#   - HP-threshold hitback: 345 Distance Units (DU) over 24 frames (~14.375 DU / frame)
+#   - Ability-proc knockback: 165 Distance Units (DU) over 11 frames (15.0 DU / frame)
+#   - Cat Cannon / Sniper: 55 Distance Units (DU) over 11 frames (5.0 DU / frame)
+#   - Boss shockwave: 735 Distance Units (DU) over 47 frames (15.638 DU / frame)
 KNOCKBACK_FRAMES_DEFAULT = 11
 KNOCKBACK_SPEED_PX = 15.0  # PONOS standard knockback displacement speed: ~15 DU / frame
 KB_SPECS = {
-    "hitback": (345.0, 24),  # Authentic PONOS HP-threshold heavy damage knockback (345 DU over 24 frames)
+    "hitback": (345.0, 24),  # Authentic PONOS HP-threshold damage knockback (345 DU over 24 frames)
     "kb": (165.0, 11),       # Authentic PONOS ability-proc knockback (165 DU over 11 frames)
     "cannon": (55.0, 11),    # Authentic PONOS Cat Cannon mini-knockback (55 DU over 11 frames)
-    "death": (165.0, 11),    # Authentic PONOS death stagger knockback before soul release (11 frames)
     "boss": (735.0, 47),     # Authentic PONOS Boss emergence shockwave (735 DU over 47 frames)
 }
 

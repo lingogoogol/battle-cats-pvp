@@ -551,6 +551,11 @@ class BattleSimulation:
         u.windup_timer = 0
         u.backswing_timer = 0
         u.current_hit_idx = 0
+        # Authentic Battle Cats knockback interrupt:
+        # Cancels windup/backswing, and resets attack cycle timer so the unit can attack immediately
+        # upon recovery once in range (rebound effect).
+        u.cycle_timer = 0
+        u.attack_cooldown_timer = 0
         if kind == "kb" and u.abilities.get("shield_hp", 0) > 0 and u.abilities.get("shield_regen_pct", 0) > 0 and not getattr(u, "is_dying", False):
             regen_pct = u.abilities["shield_regen_pct"]
             base_shield = u.abilities["shield_hp"]
@@ -914,6 +919,7 @@ class BattleSimulation:
                     unit.backswing_timer = 0
                     total = max(1, unit.kb_total_frames or KNOCKBACK_FRAMES_DEFAULT)
                     dist = unit.kb_distance or KB_SPECS["kb"][0]
+                    # Authentic PONOS constant-velocity displacement: fixed displacement per frame
                     dx = dist / float(total)
                     unit.kb_elapsed += 1
                     unit.knockback_timer -= 1
@@ -1464,6 +1470,7 @@ class BattleSimulation:
 
         # Check lethal blow flags for money drops and zombie killer
         if target.hp <= 0:
+            target.hp = 0
             if attacker.abilities.get("extra_money", False):
                 target.killed_with_extra_money = True
             if attacker.abilities.get("zombie_killer", False):
@@ -1591,10 +1598,8 @@ class BattleSimulation:
                         self._emit_event({"type": "corpse", "x": unit.pos_x, "team": unit.team, "name": unit.name})
                         continue
 
-                    unit.is_dying = True
-                    self._knockback(unit, "death")
-                    self._emit_event({"type": "dying", "x": unit.pos_x, "team": unit.team, "name": unit.name})
-
+                    # Authentic PONOS Battle_KillUnit (0x008b6f50): Unit dies on the spot, releases soul,
+                    # awards money, and slot is immediately cleared.
                     if getattr(unit, "is_boss", False) and not getattr(unit, "boss_death_triggered", False):
                         unit.boss_death_triggered = True
                         self.slow_motion_timer = 45
@@ -1612,7 +1617,6 @@ class BattleSimulation:
                             bounty *= 2
                         self.wallets[opp_team].add_money(bounty)
 
-                if unit.is_dying and not unit.is_in_knockback():
                     self._emit_event({
                         "type": "death", "x": unit.pos_x, "team": unit.team, "name": unit.name
                     })

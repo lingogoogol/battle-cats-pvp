@@ -260,9 +260,9 @@ class TestBattleParityMechanics(unittest.TestCase):
         self.sim._apply_damage(zk_cat, zombie, direction=-1, hit_damage=100)
         self.sim.step()
 
-        # Killed by zombie killer: enters permanent death knockback sequence
+        # Killed by zombie killer: permanently destroyed and cleaned from slot
         self.assertFalse(zombie.is_corpse)
-        self.assertTrue(zombie.is_dying)
+        self.assertIsNone(self.sim.units[TEAM_ENEMY][1])
 
     def test_starred_alien_warp_and_warp_blocker(self):
         # 1. Regular cat

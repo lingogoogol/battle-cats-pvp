@@ -1365,6 +1365,8 @@ function renderSkeletalRig(ctx, rigCode, animName, frame, rootX, rootY, scale = 
     }
   }
 
+
+
   // 3. Exact PONOS tbcml 2x3 Affine Matrix Hierarchy (tbcml/core/anim/model_part.py lines 327-357, 467-572)
   function getRealScale(idx) {
     const p = parts[idx];
@@ -1670,6 +1672,7 @@ function renderBattleScene() {
       const rigObj = RIGS[u.rig] || RIGS["000_f"];
       const isEnemyRig = rigObj ? !!rigObj.is_enemy : u.rig.includes("_e");
       const flipH = isEnemyRig ? u.team === TEAM_CAT : u.team === TEAM_ENEMY;
+      // Authentic PONOS knockback: unit slides horizontally in authentic 03.maanim hurt pose
       renderSkeletalRig(ctx, u.rig, u.anim, drawAf, sx, GROUND_Y + 4 + zOff, u.scale || 0.62, flipH);
 
       // Starred Alien Barrier
@@ -2607,24 +2610,16 @@ function renderLoop(now = performance.now()) {
           if (vis.localAf > maxAtkF) vis.localAf = maxAtkF;
         }
       }
-      const dir = u.team === TEAM_CAT ? -1.0 : 1.0;
-      const errX = vis.targetX - vis.renderX;
       if (u.anim === "kb") {
-        // Authentic PONOS knockback slide: tightly follow targetX with smooth 60/120fps dampening, no 50px teleport snap
-        const kbFollow = Math.min(1.0, dt * 45.0);
-        vis.renderX += errX * kbFollow;
-      } else if (u.anim === "walk" && !(u.frz > 0)) {
-        const effSpd = u.slw > 0 ? 0.5 : Math.max(0.5, (u.spd || 10.0) * 0.5);
-        vis.renderX += dir * effSpd * df;
-        const walkFollow = Math.min(1.0, dt * 25.0);
-        vis.renderX += errX * walkFollow;
-      } else {
-        // Idle / Attack / Freeze: adhere to server position smoothly
-        vis.renderX += errX * Math.min(1.0, dt * 30.0);
-      }
-      // Only snap for actual teleports (such as Alien warp or initial spawn > 200px)
-      if (Math.abs(vis.targetX - vis.renderX) > 200.0) {
+        // Zero lag during knockback: follow server's exact displacement immediately to eliminate stutter
         vis.renderX = vis.targetX;
+      } else {
+        const errX = vis.targetX - vis.renderX;
+        const followFactor = 1.0 - Math.exp(-35.0 * dt);
+        vis.renderX += errX * followFactor;
+        if (Math.abs(errX) > 120.0) {
+          vis.renderX = vis.targetX;
+        }
       }
     });
   }
