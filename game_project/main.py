@@ -109,6 +109,8 @@ def run_game(
         p2_deck=p2_deck,
         p2_levels=save_mgr.data.get("cat_levels", {}),
         p2_base_levels=save_mgr.data.get("base_levels", {}),
+        treasures=save_mgr.get_treasure_config(),
+        cannon_type=save_mgr.get_cannon_type(),
     )
     camera = Camera2D(world_width=sim.battlefield_length)
     renderer = BattleRenderer(screen, camera)
@@ -251,6 +253,8 @@ def run_game(
                             p2_deck=p2_deck,
                             p2_levels=save_mgr.data.get("cat_levels", {}),
                             p2_base_levels=save_mgr.data.get("base_levels", {}),
+                            treasures=save_mgr.get_treasure_config(),
+                            cannon_type=save_mgr.get_cannon_type(),
                         )
                         stage_reward_awarded = False
                     elif event.key == pygame.K_r and not is_online_pvp:
@@ -264,6 +268,8 @@ def run_game(
                             p2_deck=p2_deck,
                             p2_levels=save_mgr.data.get("cat_levels", {}),
                             p2_base_levels=save_mgr.data.get("base_levels", {}),
+                            treasures=save_mgr.get_treasure_config(),
+                            cannon_type=save_mgr.get_cannon_type(),
                         )
                         stage_reward_awarded = False
                     elif event.key == pygame.K_u:
@@ -387,7 +393,9 @@ def run_game(
                                 stage_config=stg_cfg,
                                 deck=save_mgr.get_deck(),
                                 cat_levels=save_mgr.data.get("cat_levels", {}),
-                                base_levels=save_mgr.data.get("base_levels", {})
+                                base_levels=save_mgr.data.get("base_levels", {}),
+                                treasures=save_mgr.get_treasure_config(),
+                                cannon_type=save_mgr.get_cannon_type(),
                             )
                             camera = Camera2D(world_width=sim.battlefield_length)
                             renderer = BattleRenderer(screen, camera)
@@ -404,7 +412,9 @@ def run_game(
                                 stage_config=sim.stage_config,
                                 deck=save_mgr.get_deck(),
                                 cat_levels=save_mgr.data.get("cat_levels", {}),
-                                base_levels=save_mgr.data.get("base_levels", {})
+                                base_levels=save_mgr.data.get("base_levels", {}),
+                                treasures=save_mgr.get_treasure_config(),
+                                cannon_type=save_mgr.get_cannon_type(),
                             )
                             stage_reward_awarded = False
                             sound_mgr.play_bgm("battle")
@@ -417,7 +427,9 @@ def run_game(
                                     stage_config=stg.to_dict(),
                                     deck=save_mgr.get_deck(),
                                     cat_levels=save_mgr.data.get("cat_levels", {}),
-                                    base_levels=save_mgr.data.get("base_levels", {})
+                                    base_levels=save_mgr.data.get("base_levels", {}),
+                                    treasures=save_mgr.get_treasure_config(),
+                                    cannon_type=save_mgr.get_cannon_type(),
                                 )
                                 camera = Camera2D(world_width=sim.battlefield_length)
                                 renderer = BattleRenderer(screen, camera)

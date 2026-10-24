@@ -156,11 +156,17 @@ class BattleRoom:
             "enemy_castle_hp": 25000,
             "waves": [],
         }
+        treasures_cfg = {
+            "eoc_chapters": 3.0,
+            "trait_fruits": {"red": True, "floating": True, "black": True, "angel": True, "alien": True, "zombie": True}
+        }
         self.sim = BattleSimulation(
             stage_config=stg,
             deck=self.p1_deck,
             pvp_mode=True,
             p2_deck=self.p2_deck,
+            treasures=treasures_cfg,
+            p2_treasures=treasures_cfg,
             rng_seed=int(time.time() * 1000) & 0x7FFFFFFF,
         )
         self.sim.deployer.cat_levels["__default__"] = self.cat_level

@@ -28,6 +28,18 @@ class SaveManager:
             "cannon_charge": 1,
             "castle_hp": 1
         },
+        "treasures": {
+            "eoc_chapters": 3.0,
+            "trait_fruits": {
+                "red": True,
+                "floating": True,
+                "black": True,
+                "angel": True,
+                "alien": True,
+                "zombie": True
+            }
+        },
+        "cannon_type": "normal",
         "sound_enabled": True,
         "volume": 0.8,
         "total_victories": 0,
@@ -152,3 +164,21 @@ class SaveManager:
         self.data["sound_enabled"] = not self.data.get("sound_enabled", True)
         self.save()
         return self.data["sound_enabled"]
+
+    def get_treasure_config(self) -> Dict[str, Any]:
+        return self.data.get("treasures", {
+            "eoc_chapters": 3.0,
+            "trait_fruits": {"red": True, "floating": True, "black": True, "angel": True, "alien": True, "zombie": True}
+        })
+
+    def set_treasure_config(self, config: Dict[str, Any]):
+        self.data["treasures"] = dict(config)
+        self.save()
+
+    def get_cannon_type(self) -> str:
+        return self.data.get("cannon_type", "normal")
+
+    def set_cannon_type(self, ctype: str):
+        self.data["cannon_type"] = str(ctype)
+        self.save()
+

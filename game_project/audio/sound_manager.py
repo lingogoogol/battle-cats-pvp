@@ -59,10 +59,17 @@ class SoundManager:
             "knockback": "snd139.wav",
             "wallet_up": "snd188.wav",
             "cannon_ready": "snd190.wav",
-            "cannon_fire": "snd191.wav",
+            "cannon_fire": "snd065.wav",
             "victory": "snd170.wav",
-            "defeat": "snd194.wav",
-            "death": "snd169.wav",
+            "defeat": "snd062.ogg",
+            "death": "snd139.wav",
+            "boss_shockwave": "snd034.ogg",
+            "boss_death": "snd189.wav",
+            "thunderbolt": "snd194.wav",
+            "shield_break": "snd188.wav",
+            "barrier_break": "snd188.wav",
+            "wave": "snd164.ogg",
+            "surge": "snd186.ogg",
         }
 
         for key, fname in sfx_files.items():

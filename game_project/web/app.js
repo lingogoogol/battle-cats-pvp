@@ -68,11 +68,17 @@ const AUDIO = {
         crit: "/audio/snd170.wav",
         critical: "/audio/snd170.wav",
         knockback: "/audio/snd139.wav",
-        cannon_fire: "/audio/snd191.wav",
+        cannon_fire: "/audio/snd065.wav",
         wallet_up: "/audio/snd188.wav",
         click: "/audio/snd167.wav",
         victory: "/audio/snd170.wav",
-        defeat: "/audio/snd194.wav"
+        defeat: "/audio/snd062.ogg",
+        death: "/audio/snd139.wav",
+        boss_shockwave: "/audio/snd034.ogg",
+        boss_death: "/audio/snd189.wav",
+        thunderbolt: "/audio/snd194.wav",
+        shield_break: "/audio/snd188.wav",
+        barrier_break: "/audio/snd188.wav"
       };
       if (fileMap[name]) {
         if (!this.sounds[name]) {
@@ -1038,8 +1044,26 @@ function onReceiveRoomState(st) {
         cameraShake.timer = 20;
         cameraShake.intensity = 12;
         AUDIO.playBGM("boss");
-        AUDIO.playSFX("knockback");
+        AUDIO.playSFX("boss_shockwave");
         showToast(`⚠️ 頭目來襲！【${ev.boss_name || "BOSS"}】登場！`);
+      } else if (ev.type === "boss_death") {
+        fxBossShockwaves.push({
+          x: ev.x,
+          bossName: `擊敗 ${ev.boss_name || "BOSS"}!`,
+          age: 0,
+          maxLife: 45,
+        });
+        cameraShake.timer = 30;
+        cameraShake.intensity = 16;
+        AUDIO.playSFX("boss_death");
+        showToast(`🏆 擊敗首領【${ev.boss_name || "BOSS"}】！`, 3500);
+      } else if (ev.type === "thunderbolt") {
+        cameraShake.timer = 16;
+        cameraShake.intensity = 10;
+        AUDIO.playSFX("thunderbolt");
+      } else if (ev.type === "iron_wall") {
+        showToast("🛡️ 貓咪鐵壁砲已就位！");
+        AUDIO.playSFX("deploy");
       } else if (ev.type === "toxic") {
         fxToxic.push({
           x: ev.x,

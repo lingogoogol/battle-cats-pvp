@@ -789,7 +789,19 @@ class BattleRenderer(BaseRenderer):
                 bname = ev.get("boss_name", "Boss")
                 self.boss_shockwaves.append(BossShockwaveFX(x, self.boss_shockwave_frame, boss_name=bname))
                 self.camera.trigger_shake(frames=20, intensity=12.0)
-                self.sound_mgr.play_sfx("knockback")
+                self.sound_mgr.play_sfx("boss_shockwave")
+            elif etype == "boss_death":
+                x = ev.get("x", 0)
+                bname = ev.get("boss_name", "Boss")
+                self.boss_shockwaves.append(BossShockwaveFX(x, self.boss_shockwave_frame, boss_name=f"擊敗 {bname}!"))
+                self.camera.trigger_shake(frames=30, intensity=16.0)
+                self.sound_mgr.play_sfx("boss_death")
+            elif etype == "thunderbolt":
+                x = ev.get("x", 0)
+                self.camera.trigger_shake(frames=16, intensity=10.0)
+                self.sound_mgr.play_sfx("thunderbolt")
+            elif etype == "iron_wall":
+                self.sound_mgr.play_sfx("deploy")
             elif etype == "toxic":
                 x = ev.get("x", 0)
                 self.toxic_effects.append(ToxicFX(x))

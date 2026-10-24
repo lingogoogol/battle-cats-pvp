@@ -24,6 +24,7 @@ from .wallet import WorkerCatWallet
 from .deployer import CatDeployer
 from .enemy_spawner import StageWaveSpawner
 from .nyancombo import NyancomboManager
+from ..core.treasure_manager import TreasureManager
 
 class SimUnit:
     """Represents an active entity occupying one of the 51 slots in a team."""
@@ -121,6 +122,9 @@ class SimUnit:
         self.aku_shield = int(self.abilities.get("shield_hp", 0))
         self.aku_shield_max = int(self.abilities.get("shield_hp", 0))
         self.survived_lethal = False
+        self.is_boss = bool(spec.get("is_boss", False))
+        self.boss_death_triggered = False
+        self.lifetime = spec.get("lifetime")
         # Zombie burrow and revive state
         self.burrow_left = int(self.abilities.get("burrow_count", 0))
         self.burrow_range = int(self.abilities.get("burrow_range", 0))
@@ -168,7 +172,11 @@ class BattleSimulation:
         p2_deck: Optional[List[Any]] = None,
         p2_levels: Optional[Dict[str, int]] = None,
         p2_base_levels: Optional[Dict[str, int]] = None,
-        rng_seed: Optional[int] = None
+        rng_seed: Optional[int] = None,
+        treasures: Optional[Dict[str, Any]] = None,
+        p2_treasures: Optional[Dict[str, Any]] = None,
+        cannon_type: Optional[str] = None,
+        cannon_types: Optional[Dict[int, str]] = None
     ):
         self.stage_config = stage_config or StageWaveSpawner.get_default_stage()
         self.battlefield_length = self.stage_config.get("length", 3000)
@@ -228,20 +236,48 @@ class BattleSimulation:
 
         self.spawner = StageWaveSpawner(self.stage_config)
 
+        # Cannon Foundation Types (normal, slow, iron_wall, thunderbolt, waterblast, breakerblast, curseblast)
+        if cannon_types is not None:
+            self.cannon_types = dict(cannon_types)
+        else:
+            ct = cannon_type or "normal"
+            self.cannon_types = {TEAM_CAT: ct, TEAM_ENEMY: ct}
+
+        # Calculate & Apply Official Battle Cats Treasures
+        tr_mgr = TreasureManager.get_instance()
+        t0_tr = tr_mgr.calculate_battle_treasures(treasures)
+        t1_tr = tr_mgr.calculate_battle_treasures(p2_treasures if p2_treasures is not None else (treasures if pvp_mode else {"eoc_chapters": 0, "trait_fruits": {}}))
+        self.team_treasures = {TEAM_CAT: t0_tr, TEAM_ENEMY: t1_tr}
+
         # Symmetrical Cat Cannon Controllers
         cannon_charge_lv = base_levels.get("cannon_charge", 1)
         cannon_pwr_lv = base_levels.get("cannon_power", 1)
         self.cannon_charge: int = 0
         self.p2_cannon_charge: int = 0
-        self.cannon_max_charge: int = max(300, 600 - (cannon_charge_lv - 1) * 20)
+        base_max_charge = max(300, 600 - (cannon_charge_lv - 1) * 20)
+        self.cannon_max_charge: int = max(150, base_max_charge - t0_tr["cannon_charge_reduction"])
         self.cannon_range: int = 800 # Authentic visible battlefield beam range
-        self.cannon_power: int = 250 + (cannon_pwr_lv - 1) * 50
+        self.cannon_power: int = 250 + (cannon_pwr_lv - 1) * 50 + t0_tr["cannon_power_bonus"]
         self.cannon_anim_timer: Dict[int, int] = {TEAM_CAT: 0, TEAM_ENEMY: 0}
         self.active_cannon_waves: List[Dict[str, Any]] = []
         self.active_waves: List[Dict[str, Any]] = []
         self.active_surges: List[Dict[str, Any]] = []
         self.accounting_level = base_levels.get("accounting", 1)
-        self.wallet_multiplier = 1.0 + 0.1 * (self.accounting_level - 1)
+        self.wallet_multiplier = (1.0 + 0.1 * (self.accounting_level - 1)) * t0_tr["bounty_mult"]
+
+        # Apply Treasure bonuses to Castle HP & Wallet
+        cat_c = self.units[TEAM_CAT][SLOT_CASTLE]
+        cat_c.max_hp += t0_tr["castle_hp_bonus"]
+        cat_c.hp = cat_c.max_hp
+        self.wallet.set_treasure_bonuses(rate_mult=t0_tr["worker_rate_mult"], cap_bonus=t0_tr["wallet_cap_bonus"])
+
+        if self.pvp_mode:
+            p2_c = self.units[TEAM_ENEMY][SLOT_CASTLE]
+            p2_c.max_hp += t1_tr["castle_hp_bonus"]
+            p2_c.hp = p2_c.max_hp
+            self.p2_wallet.set_treasure_bonuses(rate_mult=t1_tr["worker_rate_mult"], cap_bonus=t1_tr["wallet_cap_bonus"])
+
+        self.slow_motion_timer: int = 0
 
         # Evaluate & apply authentic Nyancombos for Team 0 (Cat / Player 1) and Team 1 (in PvP)
         combo_mgr = NyancomboManager.get_instance()
@@ -329,9 +365,11 @@ class BattleSimulation:
         return min(1.0, float(charge) / float(self.cannon_max_charge))
 
     def fire_cannon(self, team: int = TEAM_CAT) -> bool:
-        """Fires the Cat Cannon for `team` across the battlefield, damaging and knocking back opponents in its beam."""
+        """Fires the Cat Cannon for `team` across the battlefield with authentic sub-type mechanics."""
         if not self.is_cannon_ready(team) or self.game_over:
             return False
+
+        ctype = self.cannon_types.get(team, "normal")
 
         if team == TEAM_CAT:
             self.cannon_charge = 0
@@ -340,6 +378,7 @@ class BattleSimulation:
             beam_end_x = max(60, beam_start_x - self.cannon_range)
             min_x, max_x = beam_end_x, beam_start_x
             opp_team = TEAM_ENEMY
+            direction = -1
         else:
             self.p2_cannon_charge = 0
             c_unit = self.get_castle(TEAM_ENEMY)
@@ -347,21 +386,121 @@ class BattleSimulation:
             beam_end_x = min(self.battlefield_length - 60, beam_start_x + self.cannon_range)
             min_x, max_x = beam_start_x, beam_end_x
             opp_team = TEAM_CAT
+            direction = 1
 
         self.cannon_anim_timer[team] = 32
+
+        # Special foundation: Iron Wall Cannon
+        if ctype == "iron_wall":
+            front_unit = None
+            for slot in range(1, MAX_UNITS_PER_TEAM):
+                u = self.units[team][slot]
+                if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False):
+                    if front_unit is None:
+                        front_unit = u
+                    elif direction == -1 and u.pos_x < front_unit.pos_x:
+                        front_unit = u
+                    elif direction == 1 and u.pos_x > front_unit.pos_x:
+                        front_unit = u
+            wall_x = (front_unit.pos_x + direction * 40) if front_unit else (beam_start_x + direction * 150)
+            c_enemy_x = self.get_castle(TEAM_ENEMY).pos_x
+            c_cat_x = self.get_castle(TEAM_CAT).pos_x
+            wall_x = max(c_enemy_x + 40, min(c_cat_x - 40, wall_x))
+
+            free_slot = self.find_free_slot(team)
+            if free_slot is not None:
+                wall_spec = {
+                    "name": "鐵壁貓",
+                    "hp": 3,
+                    "speed": 0,
+                    "traits": ["metal"],
+                    "abilities": {"is_metal": True, "kb_immune": True},
+                    "texture_code": "000_f",
+                    "render_scale": 0.55,
+                    "cost": 0,
+                    "money_drop": 0,
+                    "attack_power": 0,
+                    "attack_range": 0,
+                    "attack_interval": 9999,
+                    "is_custom": True,
+                    "lifetime": 90,
+                }
+                iron_unit = SimUnit(team=team, slot=free_slot, unit_key="iron_wall_cat", spec=wall_spec, pos_x=wall_x)
+                iron_unit.lifetime = 90
+                self.units[team][free_slot] = iron_unit
+
+            self._emit_event({
+                "type": "cannon_beam",
+                "cannon_type": "iron_wall",
+                "team": team,
+                "castle_x": c_unit.pos_x,
+                "start_x": beam_start_x,
+                "end_x": wall_x,
+                "hits": 1
+            })
+            self._emit_event({
+                "type": "iron_wall",
+                "team": team,
+                "x": wall_x,
+                "duration": 90
+            })
+            return True
+
+        # Special foundation: Thunderbolt Cannon
+        if ctype == "thunderbolt":
+            target_opp = None
+            for slot in range(1, MAX_UNITS_PER_TEAM):
+                u = self.units[opp_team][slot]
+                if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False):
+                    if target_opp is None:
+                        target_opp = u
+                    elif direction == -1 and u.pos_x > target_opp.pos_x:
+                        target_opp = u
+                    elif direction == 1 and u.pos_x < target_opp.pos_x:
+                        target_opp = u
+            strike_x = target_opp.pos_x if target_opp else (beam_start_x + direction * 400)
+            strike_min = strike_x - 125
+            strike_max = strike_x + 125
+
+            hit_count = 0
+            for slot in range(1, MAX_UNITS_PER_TEAM):
+                u = self.units[opp_team][slot]
+                if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and strike_min <= u.pos_x <= strike_max:
+                    self._cannon_hit(u, opp_team, ctype="thunderbolt")
+                    hit_count += 1
+
+            self._emit_event({
+                "type": "cannon_beam",
+                "cannon_type": "thunderbolt",
+                "team": team,
+                "castle_x": c_unit.pos_x,
+                "start_x": strike_x,
+                "end_x": strike_x,
+                "hits": hit_count
+            })
+            self._emit_event({
+                "type": "thunderbolt",
+                "x": strike_x,
+                "radius": 125,
+                "team": team
+            })
+            self._update_deaths_and_castles()
+            return True
+
+        # Standard / Slow / Waterblast / Breakerblast / Curseblast sweeping beams
         hit_ids = set()
         hit_count = 0
         for slot in range(1, MAX_UNITS_PER_TEAM):
             u = self.units[opp_team][slot]
             if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and min_x <= u.pos_x <= max_x:
-                self._cannon_hit(u, opp_team)
+                self._cannon_hit(u, opp_team, ctype=ctype)
                 hit_ids.add(id(u))
                 hit_count += 1
 
-        # Also maintain a 20-frame sweeping shockwave so enemies walking into the wave during firing are hit
         self.active_cannon_waves.append({
             "team": team,
             "opp_team": opp_team,
+            "cannon_type": ctype,
             "start_x": beam_start_x,
             "end_x": beam_end_x,
             "min_x": min_x,
@@ -373,6 +512,7 @@ class BattleSimulation:
 
         self._emit_event({
             "type": "cannon_beam",
+            "cannon_type": ctype,
             "team": team,
             "castle_x": c_unit.pos_x,
             "start_x": beam_start_x,
@@ -411,13 +551,70 @@ class BattleSimulation:
             self._emit_event({"type": "shield_regen", "x": u.pos_x, "team": u.team, "shield": u.aku_shield})
         return True
 
-    def _cannon_hit(self, u: SimUnit, opp_team: int):
-        dmg = 1 if ("metal" in u.traits or u.abilities.get("is_metal")) else self.cannon_power
-        u.hp -= dmg
-        if not u.abilities.get("kb_immune", False):
-            self._knockback(u, "cannon")
-            self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
-        self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "is_crit": True, "team": opp_team})
+    def _cannon_hit(self, u: SimUnit, opp_team: int, ctype: str = "normal"):
+        if ctype == "slow":
+            dmg = max(1, self.cannon_power // 5)
+            u.hp -= dmg
+            if not u.abilities.get("slow_immune", False):
+                u.slow_timer = max(u.slow_timer, 120)
+            if not u.abilities.get("kb_immune", False):
+                self._knockback(u, "cannon")
+                self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team})
+
+        elif ctype == "thunderbolt":
+            dmg = self.cannon_power
+            u.hp -= dmg
+            if not u.abilities.get("freeze_immune", False):
+                u.freeze_timer = max(u.freeze_timer, 75)
+                u.is_winding_up = False
+                u.windup_timer = 0
+                u.backswing_timer = 0
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team})
+
+        elif ctype == "waterblast":
+            if "metal" in u.traits or u.abilities.get("is_metal", False):
+                dmg = max(1, int(u.max_hp * 0.30))
+            else:
+                dmg = max(1, self.cannon_power // 4)
+            u.hp -= dmg
+            if not u.abilities.get("kb_immune", False):
+                self._knockback(u, "cannon")
+                self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team})
+
+        elif ctype == "breakerblast":
+            if getattr(u, "aku_shield", 0) > 0:
+                u.aku_shield = 0
+                self._emit_event({"type": "shield_break", "x": u.pos_x, "team": opp_team})
+            if getattr(u, "barrier", 0) > 0:
+                u.barrier = 0
+                self._emit_event({"type": "barrier_break", "x": u.pos_x, "team": opp_team})
+            dmg = max(1, self.cannon_power // 2)
+            u.hp -= dmg
+            if not u.abilities.get("kb_immune", False):
+                self._knockback(u, "cannon")
+                self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team})
+
+        elif ctype == "curseblast":
+            dmg = max(1, self.cannon_power // 3)
+            u.hp -= dmg
+            if not u.abilities.get("curse_immune", False):
+                u.curse_timer = max(u.curse_timer, 180)
+                self._emit_event({"type": "curse", "x": u.pos_x, "team": opp_team})
+            if not u.abilities.get("kb_immune", False):
+                self._knockback(u, "cannon")
+                self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team})
+
+        else: # "normal"
+            dmg = 1 if ("metal" in u.traits or u.abilities.get("is_metal")) else self.cannon_power
+            u.hp -= dmg
+            if not u.abilities.get("kb_immune", False):
+                self._knockback(u, "cannon")
+                self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "is_crit": True, "team": opp_team})
 
     def find_free_slot(self, team: int) -> Optional[int]:
         """Finds first empty slot in [1, 50]. Slot 0 reserved for Castle."""
@@ -445,7 +642,8 @@ class BattleSimulation:
 
         wallet.spend(cost)
         combo_eff = self.team_combo_effects.get(team, {})
-        cd_reduct = combo_eff.get("cooldown_reduction", 0)
+        team_tr = self.team_treasures.get(team, {})
+        cd_reduct = combo_eff.get("cooldown_reduction", 0) + team_tr.get("cooldown_reduction", 0)
         deployer.trigger_cooldown(deck_idx, reduction_frames=cd_reduct)
 
         unit_key = slot_info["key"]
@@ -453,13 +651,20 @@ class BattleSimulation:
         castle_x = self.get_castle(team).pos_x
         spawn_x = (castle_x - 30) if team == TEAM_CAT else (castle_x + 30)
         new_unit = SimUnit(team=team, slot=slot, unit_key=unit_key, spec=spec, pos_x=spawn_x)
-        if combo_eff.get("hp_mult", 1.0) != 1.0:
-            new_unit.max_hp = int(new_unit.max_hp * combo_eff["hp_mult"])
+
+        tr_hp_mult = team_tr.get("cat_hp_mult", 1.0)
+        tr_atk_mult = team_tr.get("cat_atk_mult", 1.0)
+        tot_hp_mult = combo_eff.get("hp_mult", 1.0) * tr_hp_mult
+        tot_atk_mult = combo_eff.get("atk_mult", 1.0) * tr_atk_mult
+
+        if tot_hp_mult != 1.0:
+            new_unit.max_hp = max(1, int(new_unit.max_hp * tot_hp_mult))
             new_unit.hp = new_unit.max_hp
-        if combo_eff.get("atk_mult", 1.0) != 1.0:
-            new_unit.attack_power = int(new_unit.attack_power * combo_eff["atk_mult"])
+            new_unit.kb_threshold = max(1.0, float(new_unit.max_hp) / float(new_unit.knockback_max))
+        if tot_atk_mult != 1.0:
+            new_unit.attack_power = max(1, int(new_unit.attack_power * tot_atk_mult))
             for h in new_unit.attack_hits:
-                h["damage"] = max(1, int(h["damage"] * combo_eff["atk_mult"]))
+                h["damage"] = max(1, int(h["damage"] * tot_atk_mult))
         if combo_eff.get("spd_mult", 1.0) != 1.0:
             new_unit.speed = max(1, int(new_unit.speed * combo_eff["spd_mult"]))
         self.units[team][slot] = new_unit
@@ -553,6 +758,8 @@ class BattleSimulation:
         spawn_x = self.get_castle(TEAM_ENEMY).pos_x + 30
         actual_key = e_key or ROW_TO_ENEMY_KEY.get(e_id, f"enemy_{e_id}")
         new_unit = SimUnit(team=TEAM_ENEMY, slot=slot, unit_key=actual_key, spec=spec, pos_x=spawn_x, magnification=mag)
+        if boss > 0:
+            new_unit.is_boss = True
         self.units[TEAM_ENEMY][slot] = new_unit
 
         # Authentic Ponos Boss Shockwave: when a boss wave triggers, push all Cats back
@@ -561,7 +768,7 @@ class BattleSimulation:
                 cat = self.units[TEAM_CAT][cat_slot]
                 if cat is not None and cat.is_alive:
                     self._knockback(cat, "boss")
-            self._emit_event({"type": "boss_shockwave", "x": spawn_x, "boss_name": spec["name"]})
+            self._emit_event({"type": "boss_shockwave", "x": spawn_x, "boss_name": spec["name"], "boss_flag": boss})
 
         self._emit_event({"type": "spawn", "x": spawn_x, "team": TEAM_ENEMY, "name": spec["name"]})
         return True
@@ -575,6 +782,21 @@ class BattleSimulation:
         self.current_frame += 1
         self.visual_events = list(self._pending_visual_events)
         self._pending_visual_events.clear()
+
+        if self.slow_motion_timer > 0:
+            self.slow_motion_timer -= 1
+
+        # Check temporary entity lifetimes (e.g. Iron Wall Cat)
+        for t_id in (TEAM_CAT, TEAM_ENEMY):
+            for s_idx in range(1, MAX_UNITS_PER_TEAM):
+                un = self.units[t_id][s_idx]
+                if un and un.is_alive and getattr(un, "lifetime", None) is not None:
+                    un.lifetime -= 1
+                    if un.lifetime <= 0:
+                        un.hp = 0
+                        un.is_alive = False
+                        self.units[t_id][s_idx] = None
+                        self._emit_event({"type": "death", "x": un.pos_x, "team": un.team, "name": un.name})
 
         for t_id in (TEAM_CAT, TEAM_ENEMY):
             if self.cannon_anim_timer.get(t_id, 0) > 0:
@@ -590,7 +812,7 @@ class BattleSimulation:
                 for slot in range(1, MAX_UNITS_PER_TEAM):
                     u = self.units[opp_t][slot]
                     if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and id(u) not in cw["hit_ids"] and min_x <= u.pos_x <= max_x:
-                        self._cannon_hit(u, opp_t)
+                        self._cannon_hit(u, opp_t, ctype=cw.get("cannon_type", "normal"))
                         cw["hit_ids"].add(id(u))
                 remaining_waves.append(cw)
         self.active_cannon_waves = remaining_waves
@@ -1113,16 +1335,26 @@ class BattleSimulation:
         attacker_cursed = attacker.is_cursed()
         target_cursed = target.is_cursed()
 
+        attacker_tr = self.team_treasures.get(attacker.team, {})
+        attacker_fruits = attacker_tr.get("trait_fruits", {})
+        target_tr = self.team_treasures.get(target.team, {})
+        target_fruits = target_tr.get("trait_fruits", {})
+
         trait_match = (target.slot != SLOT_CASTLE) and any(t in target.traits for t in attacker.target_traits)
+        has_fruit_atk = any(attacker_fruits.get(t, False) for t in target.traits if t in attacker.target_traits) if (target.slot != SLOT_CASTLE) else False
+
         if target.slot == SLOT_CASTLE and attacker.abilities.get("base_destroyer", False):
             raw_damage = NativeDamageEngine.calculate_damage(raw_damage, 4000) # 4x vs Castle
         elif trait_match and not attacker_cursed:
             if attacker.abilities.get("insane_damage", False):
-                raw_damage = NativeDamageEngine.calculate_damage(raw_damage, 5000) # 5x Insane Damage
+                ins_permille = 6000 if has_fruit_atk else 5000
+                raw_damage = NativeDamageEngine.calculate_damage(raw_damage, ins_permille) # 5x or 6x Insane Damage
             elif attacker.abilities.get("massive_damage", False):
-                raw_damage = NativeDamageEngine.calculate_damage(raw_damage, 3000) # 3x Massive Damage
+                mas_permille = 4000 if has_fruit_atk else 3000
+                raw_damage = NativeDamageEngine.calculate_damage(raw_damage, mas_permille) # 3x or 4x Massive Damage
             elif attacker.abilities.get("strong", False):
-                raw_damage = NativeDamageEngine.calculate_damage(raw_damage, 1500) # 1.5x Strong Against
+                str_permille = 1800 if has_fruit_atk else 1500
+                raw_damage = NativeDamageEngine.calculate_damage(raw_damage, str_permille) # 1.5x or 1.8x Strong Against
 
         if target.slot != SLOT_CASTLE and not attacker_cursed:
             if "colossus" in target.traits and attacker.abilities.get("colossus_slayer", False):
@@ -1132,13 +1364,20 @@ class BattleSimulation:
 
         # Target's own Insanely Tough / Resistant / Strong defense against attacker's traits (disabled if target is cursed)
         target_matches_attacker = (target.slot != SLOT_CASTLE) and any(t in attacker.traits for t in target.target_traits)
+        has_fruit_def = any(target_fruits.get(t, False) for t in attacker.traits if t in target.target_traits) if (target.slot != SLOT_CASTLE) else False
+
         if target_matches_attacker and not target_cursed:
             if target.abilities.get("insanely_tough", False):
-                raw_damage = max(1, raw_damage // 6)
+                div = 7 if has_fruit_def else 6
+                raw_damage = max(1, raw_damage // div)
             elif target.abilities.get("resistant", False):
-                raw_damage = max(1, raw_damage // 4)
+                div = 5 if has_fruit_def else 4
+                raw_damage = max(1, raw_damage // div)
             elif target.abilities.get("strong", False):
-                raw_damage = max(1, raw_damage // 2)  # Strong Against: receives 1/2 damage
+                if has_fruit_def:
+                    raw_damage = max(1, NativeDamageEngine.calculate_damage(raw_damage, 400)) # 0.4x damage taken with Trait Fruit
+                else:
+                    raw_damage = max(1, raw_damage // 2)  # 0.5x damage taken without Trait Fruit
 
         if target.slot != SLOT_CASTLE and not target_cursed:
             if "colossus" in attacker.traits and target.abilities.get("colossus_slayer", False):
@@ -1348,6 +1587,17 @@ class BattleSimulation:
                     unit.is_dying = True
                     self._knockback(unit, "death")
                     self._emit_event({"type": "dying", "x": unit.pos_x, "team": unit.team, "name": unit.name})
+
+                    if getattr(unit, "is_boss", False) and not getattr(unit, "boss_death_triggered", False):
+                        unit.boss_death_triggered = True
+                        self.slow_motion_timer = 45
+                        self._emit_event({
+                            "type": "boss_death",
+                            "x": unit.pos_x,
+                            "team": unit.team,
+                            "name": unit.name,
+                            "boss_name": unit.name
+                        })
                     # Award money drop to the opposing team's wallet (scaled by Accounting treasure & extra_money)
                     if opp_team in self.wallets and unit.money_drop > 0:
                         bounty = int(unit.money_drop * self.wallet_multiplier)
