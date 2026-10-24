@@ -101,6 +101,7 @@ class EnemyData:
     traits: List[str] = field(default_factory=list)
     abilities: Dict[str, Any] = field(default_factory=dict)
     attack_anim_len: int = 17
+    attack_hits: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -112,6 +113,7 @@ class EnemyData:
             "knockback_count": self.knockback_count,
             "speed": self.speed,
             "attack_power": self.attack_power,
+            "attack_hits": [dict(h) for h in self.attack_hits],
             "attack_interval": self.attack_interval,
             "attack_range": self.attack_range,
             "money_drop": self.money_drop,
@@ -516,6 +518,7 @@ class OfficialDataParser:
             "warp_blocker": g(68) == 1,
             "warp_immune": g(68) == 1,
             "barrier_break_prob": g(70),
+            "curse_immune": g(79) == 1,
             "insanely_tough": g(80) == 1,
             "insane_damage": g(81) == 1,
             "savage_blow_prob": g(82),
@@ -530,11 +533,12 @@ class OfficialDataParser:
             "surge_immune": g(91) == 1,
             "curse_prob": g(92),
             "curse_dur": g(93),
-            "curse_immune": g(94) == 1,
+            "mini_wave": g(94) == 1,
             "shield_pierce_prob": g(95),
             "colossus_slayer": g(97) == 1,
             "behemoth_slayer": g(98) == 1,
             "surge_counter": g(107) == 1,
+            "mini_surge": g(108) == 1,
             "self_traits": ["metal"] if g(43) == 1 else ["traitless"],
         }
 
@@ -690,7 +694,46 @@ class OfficialDataParser:
                         "surge_lvl": ge(84),
                         "shield_hp": ge(87),
                         "shield_regen_pct": ge(88),
+                        "mini_wave": ge(102) == 1,
+                        "mini_surge": ge(103) == 1,
+                        "surge_counter": ge(104) == 1,
+                        "curse_immune": ge(105) == 1,
                     }
+
+                    f1 = max(1, foreswing)
+                    use_ab1 = (ge(59, 1) == 1)
+                    e_attack_hits = [{
+                        "damage": atk,
+                        "foreswing": f1,
+                        "use_ability": use_ab1,
+                        "ld_start": ge(35),
+                        "ld_range": ge(36),
+                    }]
+                    if ge(55) > 0:
+                        f2 = max(f1 + 1, ge(57, f1 + 6))
+                        ld2_s = ge(96) if ge(95) == 1 else ge(35)
+                        ld2_r = ge(97) if ge(95) == 1 else ge(36)
+                        e_attack_hits.append({
+                            "damage": ge(55),
+                            "foreswing": f2,
+                            "use_ability": (ge(60, 0) == 1),
+                            "ld_start": ld2_s,
+                            "ld_range": ld2_r,
+                        })
+                    if ge(56) > 0:
+                        prev_f = e_attack_hits[-1]["foreswing"]
+                        f3 = max(prev_f + 1, ge(58, prev_f + 6))
+                        ld3_s = ge(99) if ge(98) == 1 else ge(35)
+                        ld3_r = ge(100) if ge(98) == 1 else ge(36)
+                        e_attack_hits.append({
+                            "damage": ge(56),
+                            "foreswing": f3,
+                            "use_ability": (ge(61, 0) == 1),
+                            "ld_start": ld3_s,
+                            "ld_range": ld3_r,
+                        })
+                    total_atk = sum(h["damage"] for h in e_attack_hits)
+                    max_foreswing = max(h["foreswing"] for h in e_attack_hits)
 
                     e_tex = f"{enemy_code:03d}_e"
                     self.enemies[row_idx] = EnemyData(
@@ -701,18 +744,19 @@ class OfficialDataParser:
                         hp=hp,
                         knockback_count=kb,
                         speed=speed,
-                        attack_power=atk,
+                        attack_power=total_atk,
                         attack_interval=interval * 2,
                         attack_range=atk_range,
                         money_drop=money,
                         target_type="area" if is_area else "single",
-                        attack_windup=foreswing,
+                        attack_windup=f1,
                         color=enemy_colors.get(row_idx, (180, 180, 180)),
                         radius=20,
                         texture_code=e_tex,
                         traits=traits,
                         abilities=e_abilities,
-                        attack_anim_len=self._get_maanim_attack_len(e_tex, foreswing),
+                        attack_anim_len=self._get_maanim_attack_len(e_tex, max_foreswing),
+                        attack_hits=e_attack_hits,
                     )
                 except (ValueError, IndexError):
                     continue

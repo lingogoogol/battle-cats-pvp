@@ -6,6 +6,7 @@ and Level-scaled combat specifications from SaveManager.
 
 from typing import List, Dict, Any, Optional, Union
 from ..core.unit_data import CAT_REGISTRY
+from ..core.damage_engine import NativeDamageEngine
 
 _CAT_IDX_TO_KEY = {
     0: "cat", 1: "tank_cat", 2: "axe_cat", 3: "gross_cat", 4: "cow_cat",
@@ -72,21 +73,31 @@ class CatDeployer:
         if base_spec is None:
             return None
 
-        # Calculate level scaling (supports per-unit level or global "__default__" level)
+        # Calculate authentic Ponos piecewise level scaling (Lv 1-20: +0.20/lv; Lv 21-50: +0.10/lv or +0.05/lv)
         cat_id_str = str(base_spec.get("id", key))
         default_lv = self.cat_levels.get("__default__", 1)
-        level = self.cat_levels.get(cat_id_str, self.cat_levels.get(str(key), default_lv))
-        scale_factor = 1.0 + 0.2 * (level - 1)
+        level = max(1, self.cat_levels.get(cat_id_str, self.cat_levels.get(str(key), default_lv)))
+        if level <= 20:
+            mult = 1.0 + 0.20 * (level - 1)
+        elif level <= 50:
+            is_crazed = "crazed" in str(key).lower() or "狂亂" in base_spec.get("name", "")
+            growth = 0.05 if is_crazed else 0.10
+            mult = 4.8 + growth * (level - 20)
+        else:
+            is_crazed = "crazed" in str(key).lower() or "狂亂" in base_spec.get("name", "")
+            growth = 0.05 if is_crazed else 0.10
+            mult = 4.8 + growth * 30 + (growth * 0.5) * (level - 50)
 
+        permille = int(round(mult * 1000))
         scaled_spec = dict(base_spec)
         scaled_spec["level"] = level
-        scaled_spec["hp"] = int(base_spec["hp"] * scale_factor)
-        scaled_spec["attack_power"] = int(base_spec["attack_power"] * scale_factor)
+        scaled_spec["hp"] = max(1, NativeDamageEngine.calculate_damage(base_spec["hp"], permille))
+        scaled_spec["attack_power"] = max(1, NativeDamageEngine.calculate_damage(base_spec["attack_power"], permille))
         if base_spec.get("attack_hits"):
             scaled_hits = []
             for h in base_spec["attack_hits"]:
                 sh = dict(h)
-                sh["damage"] = max(1, int(h["damage"] * scale_factor))
+                sh["damage"] = max(1, NativeDamageEngine.calculate_damage(h["damage"], permille))
                 scaled_hits.append(sh)
             scaled_spec["attack_hits"] = scaled_hits
             scaled_spec["attack_power"] = sum(sh["damage"] for sh in scaled_hits)

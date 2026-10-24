@@ -361,5 +361,117 @@ class TestBattleParityMechanics(unittest.TestCase):
         # Verify nyancombo_activate event was emitted
         self.assertTrue(any(e.get("type") == "nyancombo_activate" for e in combo_sim.visual_events))
 
+    def test_enemy_authentic_multi_hit_and_ld(self):
+        """Verifies authentic enemy multi-hit parsing and long distance ranges from t_unit.csv."""
+        from game_project.core.unit_data import ENEMY_REGISTRY
+        # Enemy Row 12 has 3 hits in official t_unit.csv
+        spec12 = ENEMY_REGISTRY[12]
+        self.assertEqual(len(spec12["attack_hits"]), 3)
+        self.assertEqual([h["damage"] for h in spec12["attack_hits"]], [213, 12, 25])
+        self.assertEqual([h["foreswing"] for h in spec12["attack_hits"]], [2, 8, 16])
+        self.assertEqual(spec12["attack_power"], 250)
+
+    def test_piecewise_level_scaling_curve(self):
+        """Verifies authentic PONOS piecewise level curves: Lv 1-20 (+0.20/lv), Lv 21-50 (+0.10/lv or +0.05/lv)."""
+        from game_project.simulation.deployer import CatDeployer
+        deployer = CatDeployer(deck_keys=["cat"], cat_levels={"cat": 20})
+        info_lv20 = deployer.get_slot_info(0)
+        # Lv 1 cat HP = 100, mult at lv 20 = 1.0 + 0.20 * 19 = 4.8 -> 480 HP
+        self.assertEqual(info_lv20["spec"]["hp"], 480)
+
+        # Lv 30 regular cat: mult = 4.8 + 0.10 * 10 = 5.8 -> 580 HP
+        deployer_lv30 = CatDeployer(deck_keys=["cat"], cat_levels={"cat": 30})
+        info_lv30 = deployer_lv30.get_slot_info(0)
+        self.assertEqual(info_lv30["spec"]["hp"], 580)
+
+    def test_mini_wave_and_mini_surge_scaling(self):
+        """Verifies Mini-Wave and Mini-Surge deal 20% (1/5) damage with faster wave segments."""
+        mini_wave_cat = self.sim.spawn_custom_unit({
+            "name": "Mini Wave Cat",
+            "hp": 1000,
+            "attack_power": 500,
+            "speed": 0,
+            "abilities": {"mini_wave": True}
+        }, team=TEAM_CAT)
+
+        self.sim._trigger_wave_attack(mini_wave_cat, opp_team=TEAM_ENEMY, direction=-1, wave_lvl=2, hit_damage=500)
+        self.assertEqual(len(self.sim.active_waves), 1)
+        self.assertEqual(self.sim.active_waves[0]["dmg"], 100) # 20% of 500 = 100
+
+        mini_surge_cat = self.sim.spawn_custom_unit({
+            "name": "Mini Surge Cat",
+            "hp": 1000,
+            "attack_power": 1000,
+            "speed": 0,
+            "abilities": {"mini_surge": True, "surge_start": 0, "surge_range": 0}
+        }, team=TEAM_CAT)
+        self.sim._trigger_surge_attack(mini_surge_cat, opp_team=TEAM_ENEMY, direction=-1, surge_lvl=1, hit_damage=1000)
+        self.assertEqual(len(self.sim.active_surges), 1)
+        self.assertEqual(self.sim.active_surges[0]["dmg"], 200) # 20% of 1000 = 200
+
+    def test_aku_shield_regeneration_on_knockback(self):
+        """Verifies Aku enemies regenerate their shield upon taking knockback."""
+        aku_enemy = self.sim.spawn_custom_unit({
+            "name": "Aku Devil",
+            "hp": 1000,
+            "attack_power": 50,
+            "speed": 0,
+            "abilities": {"shield_hp": 200, "shield_regen_pct": 50}
+        }, team=TEAM_ENEMY)
+        aku_enemy.aku_shield = 0 # Shield broken
+
+        # Taking knockback
+        self.sim._knockback(aku_enemy, "kb")
+        self.assertEqual(aku_enemy.aku_shield, 100) # 50% of 200 = 100
+        # Check shield_regen event
+        self.assertTrue(any(e.get("type") == "shield_regen" for e in self.sim.visual_events))
+
+    def test_knockback_invulnerability_frames(self):
+        """Verifies units are completely immune to incoming attacks and damage during knockback flight."""
+        doge = self.sim.spawn_custom_unit({
+            "name": "Doge",
+            "hp": 500,
+            "attack_power": 10,
+            "speed": 0
+        }, team=TEAM_ENEMY)
+        doge.pos_x = 1000
+
+        attacker = self.sim.spawn_custom_unit({
+            "name": "Attacker",
+            "hp": 500,
+            "attack_power": 100,
+            "speed": 0
+        }, team=TEAM_CAT)
+
+        # Put doge in knockback
+        self.sim._knockback(doge, "kb")
+        self.assertTrue(doge.is_in_knockback())
+
+        # Attacker tries to deal damage during knockback
+        self.sim._apply_damage(attacker, doge, direction=-1, hit_damage=100)
+        # HP must remain intact (no damage taken during KB flight)
+        self.assertEqual(doge.hp, 500)
+
+    def test_cannon_cannot_hit_burrowed_or_warped(self):
+        """Verifies Cat Cannon beam ignores burrowed zombies and warped aliens."""
+        self.sim.spawner.spawn_entries = []
+        # Setup ready cannon
+        self.sim.cannon_charge = self.sim.cannon_max_charge
+        self.assertTrue(self.sim.is_cannon_ready())
+
+        zombie = self.sim.spawn_custom_unit({
+            "name": "Burrowed Zombie",
+            "hp": 500,
+            "attack_power": 10,
+            "speed": 0
+        }, team=TEAM_ENEMY)
+        zombie.pos_x = self.sim.get_castle(TEAM_CAT).pos_x - 100 # In cannon beam range
+        zombie.is_burrowing = True
+
+        # Fire cannon
+        self.sim.fire_cannon(TEAM_CAT)
+        # Zombie is underground; cannot be damaged by cannon
+        self.assertEqual(zombie.hp, 500)
+
 if __name__ == "__main__":
     unittest.main()

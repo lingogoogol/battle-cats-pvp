@@ -353,7 +353,7 @@ class BattleSimulation:
         hit_count = 0
         for slot in range(1, MAX_UNITS_PER_TEAM):
             u = self.units[opp_team][slot]
-            if u and u.is_alive and min_x <= u.pos_x <= max_x:
+            if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and min_x <= u.pos_x <= max_x:
                 self._cannon_hit(u, opp_team)
                 hit_ids.add(id(u))
                 hit_count += 1
@@ -404,6 +404,11 @@ class BattleSimulation:
         u.windup_timer = 0
         u.backswing_timer = 0
         u.current_hit_idx = 0
+        if kind == "kb" and u.abilities.get("shield_hp", 0) > 0 and u.abilities.get("shield_regen_pct", 0) > 0 and not getattr(u, "is_dying", False):
+            regen_pct = u.abilities["shield_regen_pct"]
+            base_shield = u.abilities["shield_hp"]
+            u.aku_shield = max(1, (base_shield * regen_pct) // 100)
+            self._emit_event({"type": "shield_regen", "x": u.pos_x, "team": u.team, "shield": u.aku_shield})
         return True
 
     def _cannon_hit(self, u: SimUnit, opp_team: int):
@@ -584,7 +589,7 @@ class BattleSimulation:
                 min_x, max_x = cw["min_x"], cw["max_x"]
                 for slot in range(1, MAX_UNITS_PER_TEAM):
                     u = self.units[opp_t][slot]
-                    if u and u.is_alive and id(u) not in cw["hit_ids"] and min_x <= u.pos_x <= max_x:
+                    if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and id(u) not in cw["hit_ids"] and min_x <= u.pos_x <= max_x:
                         self._cannon_hit(u, opp_t)
                         cw["hit_ids"].add(id(u))
                 remaining_waves.append(cw)
@@ -631,7 +636,7 @@ class BattleSimulation:
         """Checks Attacks Only ability restriction (col 32) and un-targetable states (burrowing, corpse, dying, warped)."""
         if opp.slot == SLOT_CASTLE:
             return True
-        if getattr(opp, "is_burrowing", False) or getattr(opp, "is_corpse", False) or getattr(opp, "is_dying", False) or getattr(opp, "is_warped", False):
+        if getattr(opp, "is_burrowing", False) or getattr(opp, "is_corpse", False) or getattr(opp, "is_dying", False) or getattr(opp, "is_warped", False) or opp.is_in_knockback():
             return False
         if attacker.abilities.get("attacks_only", False) and attacker.target_traits:
             return any(t in opp.traits for t in attacker.target_traits)
@@ -642,10 +647,10 @@ class BattleSimulation:
         dist = (opp.pos_x - attacker.pos_x) * direction
         ld_start = attacker.abilities.get("ld_start", 0)
         ld_range = attacker.abilities.get("ld_range", 0)
-        if hit_spec is not None and hit_spec.get("ld_start", 0) != 0 and hit_spec.get("ld_range", 0) != 0:
-            ld_start = hit_spec["ld_start"]
-            ld_range = hit_spec["ld_range"]
-        if ld_start != 0 and ld_range != 0:
+        if hit_spec is not None and hit_spec.get("ld_range", 0) != 0:
+            ld_start = hit_spec.get("ld_start", ld_start)
+            ld_range = hit_spec.get("ld_range", ld_range)
+        if ld_range != 0:
             min_r = min(ld_start, ld_start + ld_range)
             max_r = max(ld_start, ld_start + ld_range)
             return (min_r <= dist <= max_r), dist
@@ -916,6 +921,10 @@ class BattleSimulation:
         ini = WAVE_INI_ENEMY if is_enemy_spec else WAVE_INI_CAT
         width = WAVE_WIDTH_ENEMY if is_enemy_spec else WAVE_WIDTH_CAT
         origin = float(attacker.pos_x)
+        is_mini_wave = attacker.abilities.get("mini_wave", False)
+        base_dmg = attacker.attack_power if hit_damage is None else hit_damage
+        w_dmg = max(1, base_dmg // 5) if is_mini_wave else base_dmg
+        w_seg_frames = max(1, WAVE_SEG_FRAMES // 2) if is_mini_wave else WAVE_SEG_FRAMES
         wave = {
             "attacker": attacker,
             "opp_team": opp_team,
@@ -926,8 +935,10 @@ class BattleSimulation:
             "lvl": int(wave_lvl),
             "seg": 0,
             "timer": 0,
-            "dmg": hit_damage,
+            "dmg": w_dmg,
             "hit": set(),
+            "seg_frames": w_seg_frames,
+            "is_mini": is_mini_wave,
         }
         self._emit_event({
             "type": "wave_attack",
@@ -937,9 +948,10 @@ class BattleSimulation:
             "direction": direction,
             "seg0": ini + WAVE_PROG / 2,
             "prog": WAVE_PROG,
-            "seg_frames": WAVE_SEG_FRAMES,
+            "seg_frames": w_seg_frames,
             "team": attacker.team,
             "level": wave_lvl,
+            "is_mini": is_mini_wave,
         })
         # First segment lands on the same frame as the hit
         self._advance_wave(wave)
@@ -951,7 +963,7 @@ class BattleSimulation:
         half = wave["width"] / 2.0
         blocked = False
         for opp in self.units[wave["opp_team"]]:
-            if opp is None or not opp.is_alive or opp.slot == SLOT_CASTLE or id(opp) in wave["hit"]:
+            if opp is None or not opp.is_alive or opp.slot == SLOT_CASTLE or id(opp) in wave["hit"] or opp.is_in_knockback() or getattr(opp, 'is_burrowing', False) or getattr(opp, 'is_corpse', False) or getattr(opp, 'is_warped', False):
                 continue
             if center - half <= opp.pos_x <= center + half:
                 if opp.abilities.get("wave_blocker", False):
@@ -970,7 +982,7 @@ class BattleSimulation:
             wave["seg"] = wave["lvl"]  # Extinguishes wave immediately upon hitting Wave Blocker
         else:
             wave["seg"] += 1
-            wave["timer"] = WAVE_SEG_FRAMES
+            wave["timer"] = wave.get("seg_frames", WAVE_SEG_FRAMES)
 
     def _update_waves(self):
         remaining = []
@@ -992,7 +1004,9 @@ class BattleSimulation:
         c_cat_x = self.get_castle(TEAM_CAT).pos_x
         surge_x = max(c_enemy_x, min(c_cat_x, surge_x))
 
-        dmg = attacker.attack_power if hit_damage is None else hit_damage
+        is_mini_surge = attacker.abilities.get("mini_surge", False)
+        base_dmg = attacker.attack_power if hit_damage is None else hit_damage
+        dmg = max(1, base_dmg // 5) if is_mini_surge else base_dmg
         surge = {
             "attacker": attacker,
             "opp_team": opp_team,
@@ -1017,7 +1031,7 @@ class BattleSimulation:
         sx = surge["x"]
         r = surge["radius"]
         for opp in self.units[surge["opp_team"]]:
-            if opp is None or not opp.is_alive or opp.slot == SLOT_CASTLE:
+            if opp is None or not opp.is_alive or opp.slot == SLOT_CASTLE or opp.is_in_knockback() or getattr(opp, 'is_burrowing', False) or getattr(opp, 'is_corpse', False) or getattr(opp, 'is_warped', False):
                 continue
             if opp.abilities.get("surge_immune", False):
                 continue
@@ -1080,6 +1094,9 @@ class BattleSimulation:
         authentic trait multipliers, Critical hits, Savage Blow, Metal 1-damage rule, and status procs.
         Supports Curse, Toxic, Aku Shield, Colossus/Behemoth slayer, and Zombie mechanics.
         """
+        if target.slot != SLOT_CASTLE and target.is_in_knockback():
+            return
+
         raw_damage = attacker.attack_power if hit_damage is None else hit_damage
 
         # 1. Strengthen ability when HP <= strengthen_hp_pct
