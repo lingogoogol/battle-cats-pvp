@@ -44,6 +44,14 @@ let fxDeathSouls = [];
 let fxCannonBeams = [];
 let fxFloatingTexts = [];
 let fxWaves = [];
+let fxSurges = [];
+let fxWaveBlocks = [];
+let fxBossShockwaves = [];
+let fxToxic = [];
+let fxCurse = [];
+let fxWarp = [];
+let fxShieldShatters = [];
+let cameraShake = { timer: 0, intensity: 0, dx: 0, dy: 0 };
 let unitVisualState = new Map();
 
 // Preload Official Textures
@@ -780,6 +788,14 @@ function enterBattleRoom(roomCode, team, initialState) {
   fxCannonBeams = [];
   fxFloatingTexts = [];
   fxWaves = [];
+  fxSurges = [];
+  fxWaveBlocks = [];
+  fxBossShockwaves = [];
+  fxToxic = [];
+  fxCurse = [];
+  fxWarp = [];
+  fxShieldShatters = [];
+  cameraShake = { timer: 0, intensity: 0, dx: 0, dy: 0 };
 
   // Position camera near our own castle initially with full castle margin
   const stageLen = (initialState && initialState.length) || 2600;
@@ -922,6 +938,71 @@ function onReceiveRoomState(st) {
           prog: ev.prog || 200,
           segFrames: ev.seg_frames || 3,
           age: 0,
+        });
+      } else if (ev.type === "surge") {
+        const lvl = ev.level || 1;
+        fxSurges.push({
+          x: ev.x,
+          team: ev.team || 0,
+          lvl: lvl,
+          maxLife: ev.duration || 20 * lvl,
+          radius: 187.5,
+          age: 0,
+        });
+      } else if (ev.type === "wave_block" || ev.type === "warp_block") {
+        fxWaveBlocks.push({
+          x: ev.x,
+          team: ev.team || 0,
+          age: 0,
+          maxLife: 18,
+        });
+      } else if (ev.type === "boss_shockwave") {
+        fxBossShockwaves.push({
+          x: ev.x,
+          bossName: ev.boss_name || "Boss",
+          age: 0,
+          maxLife: 30,
+        });
+        cameraShake.timer = 20;
+        cameraShake.intensity = 12;
+        showToast(`⚠️ 頭目來襲！【${ev.boss_name || "BOSS"}】登場！`);
+      } else if (ev.type === "toxic") {
+        fxToxic.push({
+          x: ev.x,
+          age: 0,
+          maxLife: 20,
+        });
+      } else if (ev.type === "curse") {
+        fxCurse.push({
+          x: ev.x,
+          age: 0,
+          maxLife: 25,
+        });
+      } else if (ev.type === "warp_enter" || ev.type === "warp_exit") {
+        fxWarp.push({
+          x: ev.x,
+          isExit: ev.type === "warp_exit",
+          age: 0,
+          maxLife: 20,
+        });
+      } else if (ev.type === "shield_break" || ev.type === "shield_pierce") {
+        fxShieldShatters.push({
+          x: ev.x,
+          color: "#d946ef",
+          age: 0,
+          maxLife: 16,
+        });
+      } else if (ev.type === "barrier_break") {
+        fxShieldShatters.push({
+          x: ev.x,
+          color: "#38bdf8",
+          age: 0,
+          maxLife: 16,
+        });
+      } else if (ev.type === "nyancombo_activate") {
+        const combos = ev.combos || [];
+        combos.forEach(c => {
+          showToast(`🌟 聯組發動：${c.name} [${c.size}]`);
         });
       }
     });
@@ -1330,7 +1411,7 @@ function renderBattleScene() {
     }
   }
   cameraX = Math.max(-70, Math.min(stageLen - SCREEN_W + 70, cameraX));
-  const worldToScreenX = wx => wx - cameraX;
+  const worldToScreenX = wx => wx - (cameraX + cameraShake.dx);
 
   // 1. Seamless Tiled Official Korea Stage Background (bg000.png: sky + grass + brown soil at bottom)
   const bg = IMAGES.bg000;
@@ -1393,10 +1474,97 @@ function renderBattleScene() {
       if (sx < -240 || sx > SCREEN_W + 240) return;
 
       const zOff = (u.slot % 5) * 2 - 4;
+
+      // 1. Starred Alien Warp
+      if (u.warped) return;
+
+      // 2. Zombie Burrow
+      if (u.burrow) {
+        ctx.save();
+        ctx.fillStyle = "#5c3317";
+        ctx.beginPath();
+        ctx.ellipse(sx, GROUND_Y - 8 + zOff, 28, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#8b4513";
+        ctx.beginPath();
+        ctx.ellipse(sx, GROUND_Y - 10 + zOff, 22, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
+
+      // 3. Zombie Corpse
+      if (u.corpse) {
+        ctx.save();
+        ctx.fillStyle = "#e5e5e5";
+        ctx.beginPath();
+        ctx.ellipse(sx, GROUND_Y - 6 + zOff, 20, 4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(sx - 10, GROUND_Y - 8 + zOff, 4, 0, Math.PI * 2);
+        ctx.arc(sx + 10, GROUND_Y - 8 + zOff, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(168, 85, 247, 0.4)";
+        ctx.beginPath();
+        ctx.arc(sx, GROUND_Y - 16 + zOff, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
+
       const rigObj = RIGS[u.rig] || RIGS["000_f"];
       const isEnemyRig = rigObj ? !!rigObj.is_enemy : u.rig.includes("_e");
       const flipH = isEnemyRig ? u.team === TEAM_CAT : u.team === TEAM_ENEMY;
       renderSkeletalRig(ctx, u.rig, u.anim, drawAf, sx, GROUND_Y + 4 + zOff, u.scale || 0.62, flipH);
+
+      // Starred Alien Barrier
+      if (!u.is_dying && u.barrier > 0) {
+        ctx.save();
+        const pulse = 0.8 + 0.2 * Math.sin(clientTick * 0.3);
+        ctx.strokeStyle = `rgba(56, 189, 248, ${0.7 * pulse})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(sx, GROUND_Y - 38 + zOff, 28, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(56, 189, 248, ${0.15 * pulse})`;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Aku Shield
+      if (!u.is_dying && u.shield > 0) {
+        ctx.save();
+        const shX = u.team === TEAM_CAT ? sx + 16 : sx - 28;
+        ctx.fillStyle = "rgba(217, 70, 239, 0.6)";
+        ctx.strokeStyle = "rgba(240, 171, 252, 0.9)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(shX + 12, GROUND_Y - 60 + zOff);
+        ctx.lineTo(shX + 24, GROUND_Y - 50 + zOff);
+        ctx.lineTo(shX + 20, GROUND_Y - 20 + zOff);
+        ctx.lineTo(shX + 12, GROUND_Y - 14 + zOff);
+        ctx.lineTo(shX + 4, GROUND_Y - 20 + zOff);
+        ctx.lineTo(shX, GROUND_Y - 50 + zOff);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Curse status
+      if (!u.is_dying && u.curse > 0) {
+        ctx.save();
+        ctx.fillStyle = "rgba(126, 34, 206, 0.9)";
+        ctx.beginPath();
+        ctx.arc(sx, GROUND_Y - 68 + zOff, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.arc(sx - 2, GROUND_Y - 69 + zOff, 1.2, 0, Math.PI * 2);
+        ctx.arc(sx + 2, GROUND_Y - 69 + zOff, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
 
       // Authentic Freeze Bind & Slow Status Icons (bg00.imgcut cuts 17, 18, 13)
       if (!u.is_dying && u.frz > 0 && IMAGES.bg000 && IMAGES.bg000.complete) {
@@ -1515,6 +1683,43 @@ function advanceClientFX30Fps() {
     fxFloatingTexts[i].age++;
     if (fxFloatingTexts[i].age >= 26) fxFloatingTexts.splice(i, 1);
   }
+  for (let i = fxSurges.length - 1; i >= 0; i--) {
+    fxSurges[i].age++;
+    if (fxSurges[i].age >= fxSurges[i].maxLife) fxSurges.splice(i, 1);
+  }
+  for (let i = fxWaveBlocks.length - 1; i >= 0; i--) {
+    fxWaveBlocks[i].age++;
+    if (fxWaveBlocks[i].age >= fxWaveBlocks[i].maxLife) fxWaveBlocks.splice(i, 1);
+  }
+  for (let i = fxBossShockwaves.length - 1; i >= 0; i--) {
+    fxBossShockwaves[i].age++;
+    if (fxBossShockwaves[i].age >= fxBossShockwaves[i].maxLife) fxBossShockwaves.splice(i, 1);
+  }
+  for (let i = fxToxic.length - 1; i >= 0; i--) {
+    fxToxic[i].age++;
+    if (fxToxic[i].age >= fxToxic[i].maxLife) fxToxic.splice(i, 1);
+  }
+  for (let i = fxCurse.length - 1; i >= 0; i--) {
+    fxCurse[i].age++;
+    if (fxCurse[i].age >= fxCurse[i].maxLife) fxCurse.splice(i, 1);
+  }
+  for (let i = fxWarp.length - 1; i >= 0; i--) {
+    fxWarp[i].age++;
+    if (fxWarp[i].age >= fxWarp[i].maxLife) fxWarp.splice(i, 1);
+  }
+  for (let i = fxShieldShatters.length - 1; i >= 0; i--) {
+    fxShieldShatters[i].age++;
+    if (fxShieldShatters[i].age >= fxShieldShatters[i].maxLife) fxShieldShatters.splice(i, 1);
+  }
+  if (cameraShake.timer > 0) {
+    cameraShake.timer--;
+    const decay = cameraShake.timer / 20.0;
+    cameraShake.dx = (Math.random() - 0.5) * 2 * cameraShake.intensity * decay;
+    cameraShake.dy = (Math.random() - 0.5) * 2 * cameraShake.intensity * decay;
+  } else {
+    cameraShake.dx = 0;
+    cameraShake.dy = 0;
+  }
 }
 
 function renderCombatFX(ctx, worldToScreenX) {
@@ -1631,6 +1836,152 @@ function renderCombatFX(ctx, worldToScreenX) {
       drawSubImage(ctx, IMAGES.soul, c[0], c[1], c[2], c[3], sx - 29, sy - 34, 58, 68);
       ctx.restore();
     }
+  }
+
+  // 5. Surge Attack Energy Pillars (烈波)
+  for (let i = fxSurges.length - 1; i >= 0; i--) {
+    const s = fxSurges[i];
+    const sx = worldToScreenX(s.x);
+    if (sx < -220 || sx > SCREEN_W + 220) continue;
+    const w = s.radius * 2;
+    const h = 360;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1.0, (s.maxLife - s.age) / 8.0);
+    // Outer column
+    ctx.fillStyle = s.team === TEAM_CAT ? "rgba(50, 180, 255, 0.22)" : "rgba(180, 20, 220, 0.22)";
+    ctx.fillRect(sx - w / 2, GROUND_Y - h, w, h);
+    // Inner column
+    ctx.fillStyle = s.team === TEAM_CAT ? "rgba(180, 240, 255, 0.45)" : "rgba(255, 100, 240, 0.45)";
+    ctx.fillRect(sx - w * 0.25, GROUND_Y - h, w * 0.5, h);
+    // Core pillar
+    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.fillRect(sx - w * 0.08, GROUND_Y - h, w * 0.16, h);
+    // Ground shock ring
+    const ringR = (s.age % 20) * (s.radius / 20.0);
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.ellipse(sx, GROUND_Y - 10, ringR, ringR * 0.35, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 6. Wave & Warp Block Barrier Ripples
+  for (let i = fxWaveBlocks.length - 1; i >= 0; i--) {
+    const wb = fxWaveBlocks[i];
+    const sx = worldToScreenX(wb.x);
+    const prog = wb.age / wb.maxLife;
+    const r = 20 + prog * 50;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - prog);
+    ctx.strokeStyle = wb.team === TEAM_CAT ? "#38bdf8" : "#facc15";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(sx, GROUND_Y - 45, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, GROUND_Y - 45, Math.max(1, r - 8), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 7. Boss Appearance Shockwaves (from 000_a.png cut 25 or circular fallback)
+  for (let i = fxBossShockwaves.length - 1; i >= 0; i--) {
+    const bs = fxBossShockwaves[i];
+    const sx = worldToScreenX(bs.x);
+    const prog = bs.age / bs.maxLife;
+    const r = 40 + prog * 700;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - prog);
+    if (IMAGES.hit_a && IMAGES.hit_a.complete) {
+      drawSubImage(ctx, IMAGES.hit_a, 58, 1, 88, 88, sx - r, GROUND_Y - 30 - r * 0.4, r * 2, r * 0.8);
+    } else {
+      ctx.strokeStyle = "#fef08a";
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.ellipse(sx, GROUND_Y - 20, r, r * 0.4, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // 8. Toxic Splash Drops
+  for (let i = fxToxic.length - 1; i >= 0; i--) {
+    const tx = fxToxic[i];
+    const sx = worldToScreenX(tx.x);
+    const prog = tx.age / tx.maxLife;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - prog);
+    ctx.fillStyle = "#a855f7";
+    for (let k = 0; k < 6; k++) {
+      const px = sx + Math.sin(k * 1.5 + tx.age * 0.2) * (15 + k * 3);
+      const py = GROUND_Y - 30 - tx.age * 2 + Math.cos(k) * 10;
+      ctx.beginPath();
+      ctx.arc(px, py, Math.max(2, 5 * (1 - prog)), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // 9. Curse Swirl
+  for (let i = fxCurse.length - 1; i >= 0; i--) {
+    const cx = fxCurse[i];
+    const sx = worldToScreenX(cx.x);
+    const prog = cx.age / cx.maxLife;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 0.8 * (1 - prog));
+    ctx.fillStyle = "#7e22ce";
+    for (let k = 0; k < 5; k++) {
+      const ang = cx.age * 0.2 + k * (Math.PI * 2 / 5);
+      const px = sx + Math.cos(ang) * (18 + k * 2);
+      const py = GROUND_Y - 40 - cx.age * 1.5 + Math.sin(ang) * 8;
+      ctx.beginPath();
+      ctx.arc(px, py, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // 10. Starred Alien Warp Vortex
+  for (let i = fxWarp.length - 1; i >= 0; i--) {
+    const wx = fxWarp[i];
+    const sx = worldToScreenX(wx.x);
+    const prog = wx.age / wx.maxLife;
+    const sc = wx.isExit ? 1 - prog : prog;
+    const r = Math.max(6, 40 * sc);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - prog);
+    ctx.strokeStyle = "#c084fc";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.ellipse(sx, GROUND_Y - 35, r, r * 0.6, wx.age * 0.2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.strokeStyle = "#38bdf8";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(sx, GROUND_Y - 35, Math.max(2, r - 8), Math.max(2, (r - 8) * 0.6), -wx.age * 0.3, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // 11. Aku Shield & Alien Barrier Shatter
+  for (let i = fxShieldShatters.length - 1; i >= 0; i--) {
+    const ss = fxShieldShatters[i];
+    const sx = worldToScreenX(ss.x);
+    const prog = ss.age / ss.maxLife;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - prog);
+    ctx.fillStyle = ss.color || "#d946ef";
+    for (let k = 0; k < 8; k++) {
+      const ang = k * (Math.PI * 2 / 8);
+      const dist = ss.age * 5;
+      const px = sx + Math.cos(ang) * dist;
+      const py = GROUND_Y - 40 + Math.sin(ang) * dist + 0.2 * (ss.age * ss.age);
+      ctx.fillRect(px - 3, py - 3, 6, 6);
+    }
+    ctx.restore();
   }
 }
 

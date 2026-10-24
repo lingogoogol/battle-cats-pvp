@@ -507,11 +507,14 @@ class OfficialDataParser:
             "ld_start": g(44),
             "ld_range": g(45),
             "wave_immune": g(46) == 1,
+            "wave_blocker": g(47) == 1,
             "kb_immune": g(48) == 1,
             "freeze_immune": g(49) == 1,
             "slow_immune": g(50) == 1,
             "weaken_immune": g(51) == 1,
             "zombie_killer": g(52) == 1,
+            "warp_blocker": g(68) == 1,
+            "warp_immune": g(68) == 1,
             "barrier_break_prob": g(70),
             "insanely_tough": g(80) == 1,
             "insane_damage": g(81) == 1,
@@ -520,7 +523,18 @@ class OfficialDataParser:
             "dodge_prob": g(84),
             "dodge_dur": g(85),
             "surge_prob": g(86),
+            "surge_start": g(87) // 4,
+            "surge_range": g(88) // 4,
             "surge_lvl": g(89),
+            "toxic_immune": g(90) == 1,
+            "surge_immune": g(91) == 1,
+            "curse_prob": g(92),
+            "curse_dur": g(93),
+            "curse_immune": g(94) == 1,
+            "shield_pierce_prob": g(95),
+            "colossus_slayer": g(97) == 1,
+            "behemoth_slayer": g(98) == 1,
+            "surge_counter": g(107) == 1,
             "self_traits": ["metal"] if g(43) == 1 else ["traitless"],
         }
 
@@ -627,6 +641,10 @@ class OfficialDataParser:
                     if len(parts) > 17 and int(parts[17]) == 1: traits.append("angel")
                     if len(parts) > 18 and int(parts[18]) == 1: traits.append("alien")
                     if len(parts) > 19 and int(parts[19]) == 1: traits.append("zombie")
+                    if len(parts) > 71 and int(parts[71]) == 1: traits.append("relic")
+                    if len(parts) > 93 and int(parts[93]) == 1: traits.append("aku")
+                    if len(parts) > 94 and int(parts[94]) == 1: traits.append("colossus")
+                    if len(parts) > 101 and int(parts[101]) == 1: traits.append("behemoth")
 
                     ge = lambda idx, default=0: int(parts[idx]) if len(parts) > idx and parts[idx].lstrip("-").isdigit() else default
                     e_abilities = {
@@ -648,7 +666,30 @@ class OfficialDataParser:
                         "ld_start": ge(35),
                         "ld_range": ge(36),
                         "is_metal": "metal" in traits,
-                        "barrier_hp": ge(64)
+                        "wave_blocker": ge(38) == 1,
+                        "wave_immune": ge(39) == 1,
+                        "burrow_count": ge(43),
+                        "burrow_range": ge(44),
+                        "revive_count": ge(45),
+                        "revive_time": ge(46),
+                        "revive_hp_pct": ge(47),
+                        "barrier_hp": ge(64),
+                        "warp_prob": ge(65),
+                        "warp_dur": ge(66),
+                        "warp_min": ge(67) // 4,
+                        "warp_max": ge(68) // 4,
+                        "curse_prob": ge(72),
+                        "curse_dur": ge(73),
+                        "savage_blow_prob": ge(75),
+                        "savage_blow_boost": ge(76, 200),
+                        "toxic_prob": ge(79),
+                        "toxic_hp_pct": ge(80),
+                        "surge_prob": ge(81),
+                        "surge_start": ge(82) // 4,
+                        "surge_range": ge(83) // 4,
+                        "surge_lvl": ge(84),
+                        "shield_hp": ge(87),
+                        "shield_regen_pct": ge(88),
                     }
 
                     e_tex = f"{enemy_code:03d}_e"

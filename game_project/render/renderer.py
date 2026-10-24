@@ -241,6 +241,205 @@ class CannonBeamFX:
             glow_surf.fill((255, 80, 220, int(180 * alpha_ratio)))
             surface.blit(glow_surf, (min_x, int(self.y - beam_h // 2)))
 
+class SurgeEffectFX:
+    """Authentic PONOS Surge Attack (烈波): 187.5-radius crackling energy column lasting duration frames."""
+    def __init__(self, x: float, team: int, level: int = 1, duration: int = 20):
+        self.x = x
+        self.team = team
+        self.level = level
+        self.duration = duration
+        self.age = 0
+        self.radius = 187.5
+
+    def update(self) -> bool:
+        self.age += 1
+        return self.age < self.duration
+
+    def render(self, surface: pygame.Surface, camera: Camera2D):
+        sx = camera.world_to_screen_x(self.x)
+        if sx < -250 or sx > SCREEN_WIDTH + 250:
+            return
+        w = int(self.radius * 2)
+        h = 360
+        col_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        pulse = 0.7 + 0.3 * math.sin(self.age * 0.5)
+        c_outer = (50, 180, 255, int(70 * pulse)) if self.team == TEAM_CAT else (180, 20, 220, int(70 * pulse))
+        c_inner = (180, 240, 255, int(150 * pulse)) if self.team == TEAM_CAT else (255, 100, 240, int(150 * pulse))
+        c_core = (255, 255, 255, int(220 * pulse))
+
+        pygame.draw.rect(col_surf, c_outer, (0, 0, w, h), border_radius=16)
+        pygame.draw.rect(col_surf, c_inner, (int(w * 0.25), 0, int(w * 0.5), h), border_radius=12)
+        pygame.draw.rect(col_surf, c_core, (int(w * 0.42), 0, int(w * 0.16), h), border_radius=6)
+
+        for i in range(6):
+            spk_y = (h - (self.age * 12 + i * 55) % h)
+            spk_x = int(w * 0.5 + math.sin(self.age * 0.3 + i) * 60)
+            pygame.draw.circle(col_surf, (255, 255, 255, 230), (spk_x, int(spk_y)), 4)
+
+        ring_r = int((self.age % 20) * (self.radius / 20.0))
+        ring_alpha = max(0, int(255 * (1.0 - (self.age % 20) / 20.0)))
+        ring_surf = pygame.Surface((w, 40), pygame.SRCALPHA)
+        pygame.draw.ellipse(ring_surf, (255, 255, 255, ring_alpha), (int(w / 2 - ring_r), 5, ring_r * 2, 28), width=3)
+        col_surf.blit(ring_surf, (0, h - 35))
+
+        surface.blit(col_surf, (sx - w // 2, GROUND_Y - h + 15))
+
+
+class WaveBlockFX:
+    """Authentic PONOS Wave Blocker ripple / shield barrier."""
+    def __init__(self, x: float, team: int, life: int = 16):
+        self.x = x
+        self.team = team
+        self.age = 0
+        self.max_life = life
+
+    def update(self) -> bool:
+        self.age += 1
+        return self.age < self.max_life
+
+    def render(self, surface: pygame.Surface, camera: Camera2D):
+        sx = camera.world_to_screen_x(self.x)
+        if sx < -100 or sx > SCREEN_WIDTH + 100:
+            return
+        progress = self.age / float(self.max_life)
+        r = int(20 + progress * 50)
+        alpha = max(0, int(220 * (1.0 - progress)))
+        shield_surf = pygame.Surface((r * 2 + 10, r * 2 + 10), pygame.SRCALPHA)
+        color = (100, 240, 255, alpha) if self.team == TEAM_CAT else (255, 220, 90, alpha)
+        pygame.draw.circle(shield_surf, color, (r + 5, r + 5), r, width=4)
+        pygame.draw.circle(shield_surf, (255, 255, 255, int(alpha * 0.7)), (r + 5, r + 5), max(1, r - 8), width=2)
+        surface.blit(shield_surf, (sx - r - 5, GROUND_Y - 45 - r - 5))
+
+
+class BossShockwaveFX:
+    """Official PONOS Boss Appearance Shockwave (from 000_a.png cut 25) expanding across field with camera shake."""
+    def __init__(self, x: float, ring_frame: Optional[pygame.Surface] = None, boss_name: str = ""):
+        self.x = x
+        self.ring_frame = ring_frame
+        self.boss_name = boss_name
+        self.age = 0
+        self.max_life = 30
+
+    def update(self) -> bool:
+        self.age += 1
+        return self.age < self.max_life
+
+    def render(self, surface: pygame.Surface, camera: Camera2D):
+        sx = camera.world_to_screen_x(self.x)
+        progress = self.age / float(self.max_life)
+        r = int(40 + progress * 700)
+        alpha = max(0, int(240 * (1.0 - progress)))
+
+        if self.ring_frame is not None:
+            sz = max(10, r * 2)
+            try:
+                scaled = pygame.transform.smoothscale(self.ring_frame, (sz, sz))
+                scaled.set_alpha(alpha)
+                surface.blit(scaled, (sx - sz // 2, GROUND_Y - 30 - sz // 2))
+            except Exception:
+                pass
+        else:
+            shock_surf = pygame.Surface((r * 2 + 10, r * 2 + 10), pygame.SRCALPHA)
+            pygame.draw.circle(shock_surf, (255, 240, 180, alpha), (r + 5, r + 5), r, width=6)
+            surface.blit(shock_surf, (sx - r - 5, GROUND_Y - 30 - r - 5))
+
+
+class ToxicFX:
+    """Purple acid spray for Toxic % max HP attacks."""
+    def __init__(self, x: float, life: int = 18):
+        self.x = x
+        self.age = 0
+        self.max_life = life
+        self.drops = [(random.uniform(-25, 25), random.uniform(-40, -10), random.uniform(-2, 2), random.uniform(-4, -1)) for _ in range(8)]
+
+    def update(self) -> bool:
+        self.age += 1
+        return self.age < self.max_life
+
+    def render(self, surface: pygame.Surface, camera: Camera2D):
+        sx = camera.world_to_screen_x(self.x)
+        if sx < -80 or sx > SCREEN_WIDTH + 80:
+            return
+        progress = self.age / float(self.max_life)
+        alpha = max(0, int(255 * (1.0 - progress)))
+        for dx, dy, vx, vy in self.drops:
+            cur_x = sx + dx + vx * self.age
+            cur_y = GROUND_Y - 30 + dy + vy * self.age
+            pygame.draw.circle(surface, (180, 50, 230, alpha), (int(cur_x), int(cur_y)), max(2, int(6 * (1.0 - progress))))
+
+
+class CurseFX:
+    """Dark purple cursed flames on target."""
+    def __init__(self, x: float, life: int = 24):
+        self.x = x
+        self.age = 0
+        self.max_life = life
+
+    def update(self) -> bool:
+        self.age += 1
+        return self.age < self.max_life
+
+    def render(self, surface: pygame.Surface, camera: Camera2D):
+        sx = camera.world_to_screen_x(self.x)
+        if sx < -80 or sx > SCREEN_WIDTH + 80:
+            return
+        progress = self.age / float(self.max_life)
+        alpha = max(0, int(200 * (1.0 - progress)))
+        for i in range(5):
+            angle = self.age * 0.2 + i * (2.0 * math.pi / 5.0)
+            cur_x = sx + math.cos(angle) * (18 + i * 2)
+            cur_y = GROUND_Y - 40 - (self.age * 1.5) + math.sin(angle) * 8
+            pygame.draw.circle(surface, (120, 20, 180, alpha), (int(cur_x), int(cur_y)), 4)
+
+
+class WarpFX:
+    """Dimensional rift vortex for Starred Alien Warp."""
+    def __init__(self, x: float, is_exit: bool = False, life: int = 20):
+        self.x = x
+        self.is_exit = is_exit
+        self.age = 0
+        self.max_life = life
+
+    def update(self) -> bool:
+        self.age += 1
+        return self.age < self.max_life
+
+    def render(self, surface: pygame.Surface, camera: Camera2D):
+        sx = camera.world_to_screen_x(self.x)
+        if sx < -100 or sx > SCREEN_WIDTH + 100:
+            return
+        progress = self.age / float(self.max_life)
+        scale = (1.0 - progress) if self.is_exit else progress
+        r = int(max(6, 40 * scale))
+        alpha = max(0, int(230 * (1.0 - progress)))
+        vortex_surf = pygame.Surface((r * 2 + 10, r * 2 + 10), pygame.SRCALPHA)
+        pygame.draw.circle(vortex_surf, (160, 80, 255, alpha), (r + 5, r + 5), r, width=3)
+        pygame.draw.circle(vortex_surf, (80, 200, 255, int(alpha * 0.8)), (r + 5, r + 5), max(1, r - 6), width=2)
+        surface.blit(vortex_surf, (sx - r - 5, GROUND_Y - 35 - r - 5))
+
+
+class ShieldShatterFX:
+    """Shattering crystal shards on Aku Shield break/pierce or Alien Barrier break."""
+    def __init__(self, x: float, color: tuple = (200, 80, 240), life: int = 15):
+        self.x = x
+        self.color = color
+        self.age = 0
+        self.max_life = life
+        self.shards = [(random.uniform(-4, 4), random.uniform(-6, 1), random.randint(3, 7)) for _ in range(10)]
+
+    def update(self) -> bool:
+        self.age += 1
+        return self.age < self.max_life
+
+    def render(self, surface: pygame.Surface, camera: Camera2D):
+        sx = camera.world_to_screen_x(self.x)
+        progress = self.age / float(self.max_life)
+        alpha = max(0, int(255 * (1.0 - progress)))
+        for vx, vy, sz in self.shards:
+            cur_x = sx + vx * self.age
+            cur_y = GROUND_Y - 40 + vy * self.age + 0.3 * (self.age ** 1.5)
+            pygame.draw.rect(surface, (*self.color[:3], alpha), (int(cur_x), int(cur_y), sz, sz))
+
 def to_32bit_scaled(surf: pygame.Surface, target_size: Tuple[int, int]) -> pygame.Surface:
     if surf.get_bitsize() < 24:
         s32 = pygame.Surface(surf.get_size(), pygame.SRCALPHA)
@@ -265,6 +464,14 @@ class BattleRenderer(BaseRenderer):
         self.floating_texts: List[FloatingText] = []
         self.cannon_beams: List[CannonBeamFX] = []
         self.wave_effects: List[WaveEffectFX] = []
+        self.surge_effects: List[SurgeEffectFX] = []
+        self.wave_blocks: List[WaveBlockFX] = []
+        self.boss_shockwaves: List[BossShockwaveFX] = []
+        self.toxic_effects: List[ToxicFX] = []
+        self.curse_effects: List[CurseFX] = []
+        self.warp_effects: List[WarpFX] = []
+        self.shield_shatters: List[ShieldShatterFX] = []
+        self.boss_shockwave_frame: Optional[pygame.Surface] = None
         self.sound_mgr = SoundManager.get_instance()
         self.asset_mgr = AssetManager.get_instance()
 
@@ -416,6 +623,8 @@ class BattleRenderer(BaseRenderer):
                     to_32bit_scaled(a_img.subsurface((58, 91, 42, 40)), (52, 50)),
                     to_32bit_scaled(a_img.subsurface((58, 133, 50, 46)), (62, 58)),
                 ]
+                # Cut 25: 58, 1, 88, 88: 【ボス出現エフェクト】波動 0
+                self.boss_shockwave_frame = to_32bit_scaled(a_img.subsurface((58, 1, 88, 88)), (88, 88))
             except Exception:
                 pass
 
@@ -557,6 +766,49 @@ class BattleRenderer(BaseRenderer):
                     wx = origin + dir_ * (seg0 + seg_idx * prog)
                     delay = seg_idx * seg_frames
                     self.wave_effects.append(WaveEffectFX(wx, team, frames, delay=delay, life=18))
+            elif etype == "surge":
+                sx = ev.get("x", 0)
+                team = ev.get("team", TEAM_CAT)
+                lvl = ev.get("level", 1)
+                dur = ev.get("duration", 20 * lvl)
+                self.surge_effects.append(SurgeEffectFX(sx, team, level=lvl, duration=dur))
+                self.sound_mgr.play_sfx("hit")
+            elif etype in ("wave_block", "warp_block"):
+                x = ev.get("x", 0)
+                team = ev.get("team", TEAM_CAT)
+                self.wave_blocks.append(WaveBlockFX(x, team))
+                self.sound_mgr.play_sfx("knockback")
+            elif etype == "boss_shockwave":
+                x = ev.get("x", 0)
+                bname = ev.get("boss_name", "Boss")
+                self.boss_shockwaves.append(BossShockwaveFX(x, self.boss_shockwave_frame, boss_name=bname))
+                self.camera.trigger_shake(frames=20, intensity=12.0)
+                self.sound_mgr.play_sfx("knockback")
+            elif etype == "toxic":
+                x = ev.get("x", 0)
+                self.toxic_effects.append(ToxicFX(x))
+                self.sound_mgr.play_sfx("hit")
+            elif etype == "curse":
+                x = ev.get("x", 0)
+                self.curse_effects.append(CurseFX(x))
+            elif etype in ("warp_enter", "warp_exit"):
+                x = ev.get("x", 0)
+                self.warp_effects.append(WarpFX(x, is_exit=(etype == "warp_exit")))
+            elif etype in ("shield_break", "shield_pierce"):
+                x = ev.get("x", 0)
+                self.shield_shatters.append(ShieldShatterFX(x, color=(200, 80, 240)))
+                self.sound_mgr.play_sfx("hit")
+            elif etype == "barrier_break":
+                x = ev.get("x", 0)
+                self.shield_shatters.append(ShieldShatterFX(x, color=(90, 220, 255)))
+                self.sound_mgr.play_sfx("hit")
+            elif etype == "nyancombo_activate":
+                combos = ev.get("combos", [])
+                team = ev.get("team", TEAM_CAT)
+                for c in combos:
+                    txt = f"聯組: {c.get('name')} [{c.get('size')}]"
+                    tx = 2600 if team == TEAM_CAT else 400
+                    self.floating_texts.append(FloatingText(tx, GROUND_Y - 140, txt, (255, 230, 90), life=60))
 
     def _render_environment(self):
         # Authentic Battle Cats Environment - 100% bg000.png, Zero procedural lines or boxes
@@ -679,16 +931,75 @@ class BattleRenderer(BaseRenderer):
                     self.surface.blit(icon_s, (p2_rsx - 28, GROUND_Y - 188))
 
     def _draw_unit(self, unit: SimUnit, sx: int, sy: int, frame: int):
+        # 1. Warped units are in the rift; untargetable and invisible
+        if getattr(unit, "is_warped", False):
+            return
+
+        # 2. Zombie Burrow state: dirt mound moving along the ground
+        if getattr(unit, "is_burrowing", False):
+            dirt_surf = pygame.Surface((56, 24), pygame.SRCALPHA)
+            pygame.draw.ellipse(dirt_surf, (90, 55, 30, 230), (0, 4, 56, 18))
+            pygame.draw.ellipse(dirt_surf, (130, 85, 45, 230), (6, 6, 44, 12))
+            # Flying dirt particles
+            for i in range(3):
+                p_x = int(28 + math.sin(frame * 0.4 + i) * 16)
+                p_y = int(6 - (frame * 2 + i * 5) % 10)
+                pygame.draw.circle(dirt_surf, (80, 50, 25), (p_x, p_y), 2)
+            self.surface.blit(dirt_surf, (sx - 28, sy - 14))
+            return
+
+        # 3. Zombie Corpse state: skeletal remains lying on the ground
+        if getattr(unit, "is_corpse", False):
+            bone_surf = pygame.Surface((48, 20), pygame.SRCALPHA)
+            # Bone segments
+            pygame.draw.ellipse(bone_surf, (220, 220, 210, 220), (4, 10, 40, 8))
+            pygame.draw.circle(bone_surf, (240, 240, 230, 240), (14, 8), 5)
+            pygame.draw.circle(bone_surf, (240, 240, 230, 240), (34, 8), 5)
+            # Purple corpse mist
+            for i in range(2):
+                my = int(8 - (frame * 0.5 + i * 6) % 12)
+                mx = int(24 + math.sin(frame * 0.2 + i) * 10)
+                pygame.draw.circle(bone_surf, (160, 60, 200, 100), (mx, my), 3)
+            self.surface.blit(bone_surf, (sx - 24, sy - 12))
+            return
+
         self.unit_sprite_mgr.draw_unit(self.surface, unit, sx, sy, frame)
+
+        # Starred Alien Barrier
+        if getattr(unit, "barrier", 0) > 0 and not getattr(unit, "is_dying", False):
+            b_surf = pygame.Surface((64, 64), pygame.SRCALPHA)
+            pulse = 0.8 + 0.2 * math.sin(frame * 0.3)
+            pygame.draw.circle(b_surf, (80, 220, 255, int(120 * pulse)), (32, 32), 28, width=3)
+            pygame.draw.circle(b_surf, (200, 250, 255, int(60 * pulse)), (32, 32), 24)
+            self.surface.blit(b_surf, (sx - 32, sy - 44))
+
+        # Aku Shield
+        if getattr(unit, "aku_shield", 0) > 0 and not getattr(unit, "is_dying", False):
+            s_surf = pygame.Surface((38, 52), pygame.SRCALPHA)
+            shield_x = 12 if unit.team == TEAM_CAT else -24
+            pts = [(19, 0), (36, 12), (30, 46), (19, 52), (8, 46), (2, 12)]
+            pygame.draw.polygon(s_surf, (190, 30, 230, 160), pts)
+            pygame.draw.polygon(s_surf, (255, 180, 255, 220), pts, width=2)
+            self.surface.blit(s_surf, (sx + shield_x, sy - 46))
+
         # Render authentic Freeze / Slow status icons from bg00.imgcut when active (and not dying)
         if not getattr(unit, "is_dying", False):
-            if getattr(unit, "freeze_timer", 0) > 0 and self.freeze_frames:
+            if getattr(unit, "curse_timer", 0) > 0:
+                # Purple curse skull / smoke above head
+                c_y = sy - 68 + int(math.sin(frame * 0.3) * 3)
+                pygame.draw.circle(self.surface, (140, 20, 200, 200), (sx, c_y), 6)
+                pygame.draw.circle(self.surface, (255, 255, 255), (sx - 2, c_y - 1), 1)
+                pygame.draw.circle(self.surface, (255, 255, 255), (sx + 2, c_y - 1), 1)
+            elif getattr(unit, "freeze_timer", 0) > 0 and self.freeze_frames:
                 f_surf = self.freeze_frames[(frame // 4) % len(self.freeze_frames)]
                 self.surface.blit(f_surf, (sx - f_surf.get_width() // 2, sy - 64))
             elif getattr(unit, "slow_timer", 0) > 0 and self.slow_icon is not None:
                 self.surface.blit(self.slow_icon, (sx - self.slow_icon.get_width() // 2, sy - 76))
 
     def _render_fx(self):
+        # Update camera shake
+        self.camera.update_shake()
+
         # Update and render wave effects
         alive_waves = []
         for w in self.wave_effects:
@@ -696,6 +1007,59 @@ class BattleRenderer(BaseRenderer):
                 alive_waves.append(w)
                 w.render(self.surface, self.camera)
         self.wave_effects = alive_waves
+
+        # Update and render surge effects
+        alive_surges = []
+        for s in self.surge_effects:
+            if s.update():
+                alive_surges.append(s)
+                s.render(self.surface, self.camera)
+        self.surge_effects = alive_surges
+
+        # Update and render wave blocker ripples
+        alive_wblocks = []
+        for wb in self.wave_blocks:
+            if wb.update():
+                alive_wblocks.append(wb)
+                wb.render(self.surface, self.camera)
+        self.wave_blocks = alive_wblocks
+
+        # Update and render boss shockwaves
+        alive_bshocks = []
+        for bs in self.boss_shockwaves:
+            if bs.update():
+                alive_bshocks.append(bs)
+                bs.render(self.surface, self.camera)
+        self.boss_shockwaves = alive_bshocks
+
+        # Update and render toxic, curse, warp, shield shatter
+        alive_toxic = []
+        for tx in self.toxic_effects:
+            if tx.update():
+                alive_toxic.append(tx)
+                tx.render(self.surface, self.camera)
+        self.toxic_effects = alive_toxic
+
+        alive_curse = []
+        for cx in self.curse_effects:
+            if cx.update():
+                alive_curse.append(cx)
+                cx.render(self.surface, self.camera)
+        self.curse_effects = alive_curse
+
+        alive_warp = []
+        for wx in self.warp_effects:
+            if wx.update():
+                alive_warp.append(wx)
+                wx.render(self.surface, self.camera)
+        self.warp_effects = alive_warp
+
+        alive_shatters = []
+        for sh in self.shield_shatters:
+            if sh.update():
+                alive_shatters.append(sh)
+                sh.render(self.surface, self.camera)
+        self.shield_shatters = alive_shatters
 
         # Update and render cannon laser beams & sweeping pillars
         alive_beams = []

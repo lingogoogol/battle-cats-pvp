@@ -48,6 +48,7 @@ ec_resized.png
 game_project/screenshots/*.png
 
 # OS & IDE Settings
+*.zip
 .DS_Store
 Thumbs.db
 .vscode/

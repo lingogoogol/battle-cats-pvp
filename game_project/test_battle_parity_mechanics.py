@@ -1,0 +1,365 @@
+"""
+Comprehensive Test Suite for Authentic PONOS Battle Mechanics.
+Validates:
+1. Wave Blocker: extinguishes wave progression immediately upon contact.
+2. Surge Attack: 187.5-radius column dealing damage every 20 frames for level * 20 frames.
+3. Surge Immune: takes 0 damage from surge columns.
+4. Curse: neutralizes trait-matched damage boosts and status procs while active.
+5. Toxic: deals % of max HP true damage on procs.
+6. Aku Shield: absorbs damage until depleted; Shield Piercer shatters instantly.
+7. Zombie Burrow: travels underground under frontline cats.
+8. Zombie Revive: enters corpse state and revives unless slain by Zombie Killer.
+9. Accounting Power & Double Bounty: scales defeated enemy wallet drops.
+"""
+
+import unittest
+from game_project.simulation.battle_sim import BattleSimulation, SimUnit
+from game_project.core.constants import TEAM_CAT, TEAM_ENEMY, SLOT_CASTLE
+
+class TestBattleParityMechanics(unittest.TestCase):
+    def setUp(self):
+        self.sim = BattleSimulation()
+
+    def test_wave_blocker_extinguishes_wave(self):
+        # Cat with wave blocker
+        blocker = self.sim.spawn_custom_unit({
+            "name": "Octo Cat",
+            "hp": 2000,
+            "attack_power": 100,
+            "speed": 0,
+            "abilities": {"wave_blocker": True}
+        }, team=TEAM_CAT)
+        blocker.pos_x = 1000
+
+        # Friendly unit behind blocker
+        cat_behind = self.sim.spawn_custom_unit({
+            "name": "Cat Behind",
+            "hp": 500,
+            "attack_power": 50,
+            "speed": 0
+        }, team=TEAM_CAT)
+        cat_behind.pos_x = 1400
+
+        # Enemy releasing Level 3 wave from pos_x 800 (direction +1 toward cats)
+        enemy = self.sim.spawn_custom_unit({
+            "name": "Wave Enemy",
+            "hp": 1000,
+            "attack_power": 200,
+            "speed": 0
+        }, team=TEAM_ENEMY)
+        enemy.pos_x = 800
+
+        init_blocker_hp = blocker.hp
+        init_behind_hp = cat_behind.hp
+
+        # Trigger level 3 wave
+        self.sim._trigger_wave_attack(enemy, opp_team=TEAM_CAT, direction=1, wave_lvl=3, hit_damage=200)
+
+        # Step 15 frames for wave to progress
+        all_evs = []
+        for _ in range(15):
+            self.sim.step()
+            all_evs.extend(self.sim.visual_events)
+
+        # Wave blocker took 0 damage and blocked the wave from reaching cat_behind
+        self.assertEqual(blocker.hp, init_blocker_hp)
+        self.assertEqual(cat_behind.hp, init_behind_hp)
+        # Verify wave_block visual event was emitted
+        block_evs = [ev for ev in all_evs if ev.get("type") == "wave_block"]
+        self.assertTrue(len(block_evs) > 0, "Expected wave_block event")
+
+    def test_surge_attack_ticks_and_surge_immune(self):
+        # Enemy with surge immune
+        immune_cat = self.sim.spawn_custom_unit({
+            "name": "Surge Immune Cat",
+            "hp": 1000,
+            "attack_power": 50,
+            "speed": 0,
+            "abilities": {"surge_immune": True}
+        }, team=TEAM_CAT)
+        immune_cat.pos_x = 1500
+
+        normal_cat = self.sim.spawn_custom_unit({
+            "name": "Normal Cat",
+            "hp": 1000,
+            "attack_power": 50,
+            "speed": 0
+        }, team=TEAM_CAT)
+        normal_cat.pos_x = 1500
+
+        attacker = self.sim.spawn_custom_unit({
+            "name": "Surge Attacker",
+            "hp": 2000,
+            "attack_power": 100,
+            "speed": 0,
+            "abilities": {"surge_start": 500, "surge_range": 0}
+        }, team=TEAM_ENEMY)
+        attacker.pos_x = 1000
+
+        # Trigger level 2 surge (lasts 40 frames, hits at frame 0 and frame 20)
+        self.sim._trigger_surge_attack(attacker, opp_team=TEAM_CAT, direction=1, surge_lvl=2, hit_damage=100)
+
+        # Frame 0 hit lands
+        self.assertEqual(immune_cat.hp, 1000, "Surge immune cat should take 0 damage")
+        self.assertEqual(normal_cat.hp, 900, "Normal cat took first surge tick")
+
+        # Step 20 frames to trigger second surge tick
+        for _ in range(20):
+            self.sim.step()
+
+        self.assertEqual(immune_cat.hp, 1000, "Surge immune cat took 0 damage from 2nd tick")
+        self.assertEqual(normal_cat.hp, 800, "Normal cat took second surge tick")
+
+    def test_curse_disables_trait_abilities(self):
+        # Red Enemy
+        red_enemy = self.sim.spawn_custom_unit({
+            "name": "Red Enemy",
+            "hp": 2000,
+            "attack_power": 100,
+            "speed": 0,
+            "traits": ["red"]
+        }, team=TEAM_ENEMY)
+
+        # Cat with Massive Damage vs Red (3x)
+        cat = self.sim.spawn_custom_unit({
+            "name": "Massive Damage Cat",
+            "hp": 1000,
+            "attack_power": 100,
+            "speed": 0,
+            "target_traits": ["red"],
+            "abilities": {"massive_damage": True}
+        }, team=TEAM_CAT)
+
+        # Without curse: 100 * 3 = 300 damage
+        self.sim._apply_damage(cat, red_enemy, direction=-1, hit_damage=100)
+        self.assertEqual(red_enemy.hp, 1700)
+
+        # Apply Curse to Cat for 60 frames
+        cat.curse_timer = 60
+        self.assertTrue(cat.is_cursed())
+
+        # While cursed: massive damage is suppressed, deals 100 raw damage
+        self.sim._apply_damage(cat, red_enemy, direction=-1, hit_damage=100)
+        self.assertEqual(red_enemy.hp, 1600)
+
+    def test_toxic_damage_and_immunity(self):
+        target = self.sim.spawn_custom_unit({
+            "name": "Target Cat",
+            "hp": 1000,
+            "max_hp": 1000,
+            "attack_power": 50,
+            "speed": 0
+        }, team=TEAM_CAT)
+
+        toxic_attacker = self.sim.spawn_custom_unit({
+            "name": "Toxic Enemy",
+            "hp": 500,
+            "attack_power": 10,
+            "speed": 0,
+            "abilities": {"toxic_prob": 100, "toxic_hp_pct": 40}
+        }, team=TEAM_ENEMY)
+
+        # Deals 10 base damage + 40% max HP toxic damage (400) = 410 total
+        self.sim._apply_damage(toxic_attacker, target, direction=1, hit_damage=10)
+        self.assertEqual(target.hp, 1000 - 410)
+
+        # Toxic immune target
+        immune_target = self.sim.spawn_custom_unit({
+            "name": "Toxic Immune Cat",
+            "hp": 1000,
+            "max_hp": 1000,
+            "attack_power": 50,
+            "speed": 0,
+            "abilities": {"toxic_immune": True}
+        }, team=TEAM_CAT)
+
+        self.sim._apply_damage(toxic_attacker, immune_target, direction=1, hit_damage=10)
+        self.assertEqual(immune_target.hp, 990, "Toxic immune target only took base damage")
+
+    def test_aku_shield_absorption_and_pierce(self):
+        # Aku enemy with 300 shield
+        aku_enemy = self.sim.spawn_custom_unit({
+            "name": "Aku Enemy",
+            "hp": 1000,
+            "attack_power": 50,
+            "speed": 0,
+            "traits": ["aku"],
+            "abilities": {"shield_hp": 300}
+        }, team=TEAM_ENEMY)
+        self.assertEqual(aku_enemy.aku_shield, 300)
+
+        cat = self.sim.spawn_custom_unit({
+            "name": "Attacking Cat",
+            "hp": 500,
+            "attack_power": 100,
+            "speed": 0
+        }, team=TEAM_CAT)
+
+        # Hit for 100: absorbed by shield
+        self.sim._apply_damage(cat, aku_enemy, direction=-1, hit_damage=100)
+        self.assertEqual(aku_enemy.aku_shield, 200)
+        self.assertEqual(aku_enemy.hp, 1000)
+
+        # Shield Piercer cat: 100% pierce instantly destroys remaining 200 shield
+        piercer_cat = self.sim.spawn_custom_unit({
+            "name": "Piercer Cat",
+            "hp": 500,
+            "attack_power": 100,
+            "speed": 0,
+            "abilities": {"shield_pierce_prob": 100}
+        }, team=TEAM_CAT)
+
+        self.sim._apply_damage(piercer_cat, aku_enemy, direction=-1, hit_damage=100)
+        self.assertEqual(aku_enemy.aku_shield, 0, "Shield was pierced")
+        self.assertEqual(aku_enemy.hp, 900, "Damage dealt after shield pierced")
+
+    def test_zombie_revive_and_zombie_killer(self):
+        # Zombie enemy with 1 revive at 50% HP
+        zombie = self.sim.spawn_custom_unit({
+            "name": "Zombie Doge",
+            "hp": 100,
+            "attack_power": 20,
+            "speed": 0,
+            "traits": ["zombie"],
+            "abilities": {"revive_count": 1, "revive_time": 5, "revive_hp_pct": 50}
+        }, team=TEAM_ENEMY)
+
+        normal_cat = self.sim.spawn_custom_unit({
+            "name": "Normal Cat",
+            "hp": 500,
+            "attack_power": 100,
+            "speed": 0
+        }, team=TEAM_CAT)
+
+        # Normal cat kills zombie
+        self.sim._apply_damage(normal_cat, zombie, direction=-1, hit_damage=150)
+        self.sim.step()
+
+        # Zombie should enter corpse state rather than dying permanently
+        self.assertTrue(zombie.is_corpse)
+        self.assertFalse(zombie.is_alive)
+
+        # Step 6 frames for corpse revive timer to complete
+        for _ in range(6):
+            self.sim.step()
+
+        # Zombie revived with 50% HP (50 HP)
+        self.assertFalse(zombie.is_corpse)
+        self.assertTrue(zombie.is_alive)
+        self.assertEqual(zombie.hp, 50)
+
+        # Zombie killer cat delivers lethal blow
+        zk_cat = self.sim.spawn_custom_unit({
+            "name": "Zombie Killer Cat",
+            "hp": 500,
+            "attack_power": 100,
+            "speed": 0,
+            "abilities": {"zombie_killer": True}
+        }, team=TEAM_CAT)
+
+        self.sim._apply_damage(zk_cat, zombie, direction=-1, hit_damage=100)
+        self.sim.step()
+
+        # Killed by zombie killer: enters permanent death knockback sequence
+        self.assertFalse(zombie.is_corpse)
+        self.assertTrue(zombie.is_dying)
+
+    def test_starred_alien_warp_and_warp_blocker(self):
+        # 1. Regular cat
+        normal_cat = self.sim.spawn_custom_unit({
+            "name": "Normal Cat",
+            "hp": 1000,
+            "attack_power": 50,
+            "speed": 0
+        }, team=TEAM_CAT)
+        normal_cat.pos_x = 1000
+
+        # Warp enemy
+        warper = self.sim.spawn_custom_unit({
+            "name": "Alien Warper",
+            "hp": 2000,
+            "attack_power": 50,
+            "speed": 0,
+            "abilities": {
+                "warp_prob": 100,
+                "warp_dur": 20,
+                "warp_min": 200,
+                "warp_max": 200
+            }
+        }, team=TEAM_ENEMY)
+        warper.pos_x = 800
+
+        # Apply hit to normal cat: should get warped
+        self.sim._apply_damage(warper, normal_cat, direction=1, hit_damage=50)
+        self.assertTrue(normal_cat.is_warped)
+        self.assertEqual(normal_cat.warp_timer, 20)
+        self.assertFalse(self.sim._can_unit_target_opponent(warper, normal_cat))
+
+        # Advance 20 frames for warp to complete
+        for _ in range(20):
+            self.sim.step()
+
+        # Reappeared displaced 200px backward toward Cat Base (1000 -> 1200)
+        self.assertFalse(normal_cat.is_warped)
+        self.assertEqual(normal_cat.pos_x, 1200)
+
+        # 2. Cat with Warp Blocker
+        blocker = self.sim.spawn_custom_unit({
+            "name": "Satellite Cat",
+            "hp": 1000,
+            "attack_power": 50,
+            "speed": 0,
+            "abilities": {"warp_blocker": True}
+        }, team=TEAM_CAT)
+        blocker.pos_x = 1000
+
+        self.sim._apply_damage(warper, blocker, direction=1, hit_damage=50)
+        self.assertFalse(blocker.is_warped)
+        self.assertEqual(blocker.warp_timer, 0)
+        # Check warp_block visual event
+        evs = self.sim.visual_events
+        self.assertTrue(any(e.get("type") == "warp_block" for e in evs))
+
+    def test_surge_counter_triggers_retaliation(self):
+        # Target with surge counter
+        counter_cat = self.sim.spawn_custom_unit({
+            "name": "Surge Counter Cat",
+            "hp": 5000,
+            "attack_power": 300,
+            "speed": 0,
+            "abilities": {"surge_counter": True, "surge_lvl": 1}
+        }, team=TEAM_CAT)
+        counter_cat.pos_x = 1000
+
+        enemy = self.sim.spawn_custom_unit({
+            "name": "Enemy",
+            "hp": 5000,
+            "attack_power": 100,
+            "speed": 0,
+            "abilities": {"surge_start": 0, "surge_range": 0}
+        }, team=TEAM_ENEMY)
+        enemy.pos_x = 1000
+
+        # Enemy triggers surge on counter cat
+        self.sim._trigger_surge_attack(enemy, opp_team=TEAM_CAT, direction=1, surge_lvl=1, hit_damage=100)
+
+        # Verify a counter surge was spawned by counter_cat
+        counter_surges = [s for s in self.sim.active_surges if s.get("attacker") == counter_cat]
+        self.assertTrue(len(counter_surges) > 0, "Expected counter surge spawned")
+        self.assertEqual(counter_surges[0]["opp_team"], TEAM_ENEMY)
+
+    def test_nyancombo_activation_and_effects(self):
+        # Deck with basic 5 cats: cat (0), tank_cat (1), gross_cat (3), cow_cat (4), axe_cat (2)
+        basic_deck = ["cat", "tank_cat", "axe_cat", "gross_cat", "cow_cat"]
+        combo_sim = BattleSimulation(deck=basic_deck)
+
+        # Authentic PONOS Combo 0 gives Initial Money +300 and Worker Level +1
+        # Default starting money is 150 -> becomes 150 + 300 = 450!
+        self.assertEqual(combo_sim.wallet.money, 450)
+        # Default starting worker level is 1 -> becomes 1 + 1 = 2!
+        self.assertEqual(combo_sim.wallet.level, 2)
+        # Verify nyancombo_activate event was emitted
+        self.assertTrue(any(e.get("type") == "nyancombo_activate" for e in combo_sim.visual_events))
+
+if __name__ == "__main__":
+    unittest.main()

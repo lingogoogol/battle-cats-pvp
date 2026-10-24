@@ -123,6 +123,6 @@ class CatDeployer:
         cost = base_spec.get("cost", max(50, base_spec.get("money_drop", 100)))
         return current_money >= cost
 
-    def trigger_cooldown(self, idx: int):
+    def trigger_cooldown(self, idx: int, reduction_frames: int = 0):
         if 0 <= idx < len(self.cooldowns):
-            self.cooldowns[idx] = self.max_cooldowns[idx]
+            self.cooldowns[idx] = max(1, self.max_cooldowns[idx] - reduction_frames)

@@ -3,6 +3,7 @@
 Supports keyboard panning, mouse drag, and auto-focus on frontline combat.
 """
 
+import random
 from ..core.constants import SCREEN_WIDTH, BATTLEFIELD_LENGTH
 
 class Camera2D:
@@ -15,9 +16,27 @@ class Camera2D:
         self.is_dragging = False
         self.drag_start_mouse_x = 0
         self.drag_start_offset_x = 0
+        self.shake_timer = 0
+        self.shake_intensity = 0.0
+        self.shake_dx = 0.0
+        self.shake_dy = 0.0
+
+    def trigger_shake(self, frames: int = 15, intensity: float = 8.0):
+        self.shake_timer = max(self.shake_timer, frames)
+        self.shake_intensity = max(self.shake_intensity, intensity)
+
+    def update_shake(self):
+        if self.shake_timer > 0:
+            decay = self.shake_timer / 15.0
+            self.shake_dx = random.uniform(-1.0, 1.0) * self.shake_intensity * decay
+            self.shake_dy = random.uniform(-1.0, 1.0) * self.shake_intensity * decay
+            self.shake_timer -= 1
+        else:
+            self.shake_dx = 0.0
+            self.shake_dy = 0.0
 
     def world_to_screen_x(self, world_x: float) -> int:
-        return int(world_x - self.offset_x)
+        return int(world_x - self.offset_x + self.shake_dx)
 
     def screen_to_world_x(self, screen_x: int) -> float:
         return screen_x + self.offset_x

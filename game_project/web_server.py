@@ -300,7 +300,7 @@ class BattleRoom:
             for team_id in (TEAM_CAT, TEAM_ENEMY):
                 for slot_idx in range(1, len(sim.units[team_id])):
                     u = sim.units[team_id][slot_idx]
-                    if u is not None and (u.is_alive or getattr(u, "is_dying", False)):
+                    if u is not None and (u.is_alive or getattr(u, "is_dying", False) or getattr(u, "is_corpse", False)):
                         # Determine rig code & anim state
                         rig_code = u.texture_code or u.spec.get("texture_code", "")
                         if not rig_code:
@@ -311,7 +311,13 @@ class BattleRoom:
                                 eid = u.spec.get("enemy_code", 0)
                                 rig_code = f"{int(eid):03d}_e" if isinstance(eid, int) else "000_e"
 
-                        if u.is_in_knockback():
+                        if getattr(u, "is_corpse", False):
+                            anim_state = "corpse"
+                        elif getattr(u, "is_burrowing", False):
+                            anim_state = "burrow"
+                        elif getattr(u, "is_warped", False):
+                            anim_state = "warp"
+                        elif u.is_in_knockback():
                             anim_state = "kb"
                         elif u.is_in_attack_anim():
                             anim_state = "attack"
@@ -341,6 +347,12 @@ class BattleRoom:
                             "tint": u.spec.get("tint_rgb"),
                             "custom": bool(u.spec.get("is_custom", False)),
                             "is_dying": bool(getattr(u, "is_dying", False)),
+                            "burrow": bool(getattr(u, "is_burrowing", False)),
+                            "corpse": bool(getattr(u, "is_corpse", False)),
+                            "warped": bool(getattr(u, "is_warped", False)),
+                            "shield": int(getattr(u, "aku_shield", 0)),
+                            "barrier": int(getattr(u, "barrier", 0)),
+                            "curse": int(getattr(u, "curse_timer", 0)),
                         })
 
             def serialize_team_hud(t_id: int) -> Dict[str, Any]:
