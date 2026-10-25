@@ -1624,8 +1624,8 @@ function renderBattleScene() {
       const vis = unitVisualState.get(u.id);
       const drawWorldX = vis ? vis.renderX : u.x;
       const drawAf = vis ? vis.localAf : u.af;
-      // Shift visual root forward by dir * 48px so melee units (range=110..140) clash nose-to-nose
-      const visualWorldX = drawWorldX + (u.team === TEAM_CAT ? -48 : 48);
+      // [REA-AUTHENTIC-ALIGNMENT: Removed synthetic +/- 48px offset; unit root aligns 1:1 with pos_x and hitboxes]
+      const visualWorldX = drawWorldX;
       const sx = worldToScreenX(visualWorldX);
       if (sx < -240 || sx > SCREEN_W + 240) return;
 
