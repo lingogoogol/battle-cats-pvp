@@ -72,15 +72,22 @@ class PowerUpMenuUI:
         # Upgrade Button on detail panel
         self.rect_upgrade_btn = pygame.Rect(860, 610, 280, 64)
 
-        # Base part definitions
+        # Base part definitions (Official Battle Cats base abilities)
         self.base_parts = [
-            {"key": "worker_cat", "name": "工作狂貓 工作效率", "desc": "加快戰鬥中金錢增長速度", "base_cost": 300},
-            {"key": "wallet", "name": "錢包 容量上限", "desc": "增加戰鬥中金錢最大存量上限", "base_cost": 300},
-            {"key": "cannon_power", "name": "貓咪砲 攻擊力", "desc": "提高發射貓咪砲時造成的毀滅傷害", "base_cost": 500},
-            {"key": "cannon_charge", "name": "貓咪砲 充電速度", "desc": "大幅縮減貓咪砲再次發射冷卻時間", "base_cost": 500},
-            {"key": "castle_hp", "name": "貓咪城 耐久度", "desc": "提高己方大本營城堡的最大生命值", "base_cost": 400},
+            {"key": "worker_cat", "name": "工作狂貓 工作效率", "desc": "加快戰鬥中金錢增長速度"},
+            {"key": "wallet", "name": "錢包 容量上限", "desc": "增加戰鬥中金錢最大存量上限"},
+            {"key": "cannon_power", "name": "貓咪砲 攻擊力", "desc": "提高發射貓咪砲時造成的毀滅傷害"},
+            {"key": "cannon_charge", "name": "貓咪砲 充電速度", "desc": "大幅縮減貓咪砲再次發射冷卻時間"},
+            {"key": "castle_hp", "name": "貓咪城 耐久度", "desc": "提高己方大本營城堡的最大生命值"},
         ]
         self.selected_base_idx = 0
+
+    # Official PONOS Base Upgrade XP curve for Cat Base facilities (Levels 1 to 20):
+    # Lv 1->2 (1000) .. Lv 9->10 (28000), followed by 2x scaling for Lv 10->11 .. Lv 19->20
+    BASE_UPGRADE_XP_TABLE = [
+        1000, 2000, 4000, 8000, 12000, 16000, 20000, 24000, 28000,
+        2000, 4000, 8000, 16000, 24000, 32000, 40000, 48000, 56000
+    ]
 
     def _init_bg(self):
         p = r"E:\rea\game_assets\extracted_png\bg.png"
@@ -161,12 +168,17 @@ class PowerUpMenuUI:
         return self.parser.get_cat_upgrade_cost(cat_id, current_lv)
 
     def get_base_upgrade_cost(self, part_idx: int) -> Optional[int]:
+        if not (0 <= part_idx < len(self.base_parts)):
+            return None
         part = self.base_parts[part_idx]
         current_lv = self.save_mgr.get_base_level(part["key"])
         if current_lv >= 20:
             return None
-        # Authentic Ponos base growth cost progression
-        return part["base_cost"] * current_lv
+        # Authentic PONOS base facility XP progression table
+        idx = current_lv - 1
+        if 0 <= idx < len(self.BASE_UPGRADE_XP_TABLE):
+            return self.BASE_UPGRADE_XP_TABLE[idx]
+        return 56000
 
     def handle_click(self, mouse_pos: Tuple[int, int]) -> Optional[str]:
         """Returns 'back' or None."""

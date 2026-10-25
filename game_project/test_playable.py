@@ -381,13 +381,23 @@ class TestPlayableBattle(unittest.TestCase):
         self.assertTrue(fired)
         self.assertEqual(self.sim.cannon_charge, 0)
         self.assertGreater(self.sim.cannon_anim_timer[TEAM_CAT], 0)
-        self.assertLess(doge.hp, 5000, "Enemy in cannon range must take cannon damage")
-        self.assertGreater(doge.knockback_timer, 0, "Enemy hit by cannon must be knocked back")
 
-        # Now call step() and verify cannon_beam visual event was NOT wiped out!
+        # Authentic progressive wavefront sweep:
+        # Cannon wavefront propagates forward on each step() (over 14 frames, ~200 px/frame on 2880 stage).
+        # First step initiates the visual beam event
         self.sim.step()
         ev_types = [ev.get("type") for ev in self.sim.visual_events]
         self.assertIn("cannon_beam", ev_types, "cannon_beam visual event must survive into step() for BattleRenderer")
+
+        # Step until the sweeping wavefront reaches Doge (Doge is 400px away, reached at step 2)
+        for _ in range(5):
+            if doge.hp < 5000:
+                break
+            self.sim.step()
+
+        # Doge (400px away) is struck by the sweeping wavefront
+        self.assertLess(doge.hp, 5000, "Enemy in cannon wavefront path must take cannon damage")
+        self.assertGreater(doge.knockback_timer, 0, "Enemy hit by cannon must be knocked back")
 
     def test_19_online_networked_pvp_lockstep_and_custom_unit_sync(self):
         """Criterion 19: 跨電腦 TCP 聯機對戰 (Online PvP Lockstep) 與自製角色自動同步驗證"""
