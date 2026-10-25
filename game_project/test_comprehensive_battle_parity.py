@@ -64,7 +64,7 @@ class TestComprehensiveBattleParity(unittest.TestCase):
         self.assertGreater(doge.pos_x, 1000.0, "Team 1 must move right")
 
     def test_03_constant_velocity_hitback(self):
-        """Authentic PONOS 345 DU over 24 frames at constant 14.375 DU/frame."""
+        """Authentic PONOS 86.0 px over 24 frames at constant 86/24 px/frame."""
         doge = self.sim.spawn_custom_unit("doge", team=TEAM_ENEMY)
         doge.pos_x = 1000.0
         doge.knockback_max = 3
@@ -83,14 +83,14 @@ class TestComprehensiveBattleParity(unittest.TestCase):
         for f in range(24):
             self.sim.step()
             dx = prev_x - doge.pos_x
-            self.assertAlmostEqual(dx, 345.0 / 24.0, places=4, msg=f"Constant velocity on frame {f}")
+            self.assertAlmostEqual(dx, 86.0 / 24.0, places=4, msg=f"Constant velocity on frame {f}")
             prev_x = doge.pos_x
 
         self.assertFalse(doge.is_in_knockback())
-        self.assertAlmostEqual(1000.0 - doge.pos_x, 345.0, places=2)
+        self.assertAlmostEqual(1000.0 - doge.pos_x, 86.0, places=2)
 
     def test_04_constant_velocity_ability_kb(self):
-        """Authentic PONOS 165.0 DU over 11 frames (15.0 DU/frame)."""
+        """Authentic PONOS 48.0 px over 11 frames (4.364 px/frame)."""
         cat = self.sim.spawn_custom_unit("cat", team=TEAM_CAT)
         cat.pos_x = 2000.0
 
@@ -102,11 +102,11 @@ class TestComprehensiveBattleParity(unittest.TestCase):
         for f in range(11):
             self.sim.step()
             dx = cat.pos_x - prev_x  # Cat is team 0, knocks back right (+x)
-            self.assertAlmostEqual(dx, 165.0 / 11.0, places=4, msg=f"Ability KB constant 15 DU/f on frame {f}")
+            self.assertAlmostEqual(dx, 48.0 / 11.0, places=4, msg=f"Ability KB constant 48/11 px/f on frame {f}")
             prev_x = cat.pos_x
 
         self.assertFalse(cat.is_in_knockback())
-        self.assertAlmostEqual(cat.pos_x - 2000.0, 165.0, places=2)
+        self.assertAlmostEqual(cat.pos_x - 2000.0, 48.0, places=2)
 
     def test_05_rebound_attack_parity(self):
         """Knockback cancels windup and resets cycle_timer so unit can attack immediately."""

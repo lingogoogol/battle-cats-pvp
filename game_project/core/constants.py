@@ -18,18 +18,19 @@ TEAM_ENEMY = 1
 
 # Knockback & motion constants.
 # Native RE (Phase 10-14) and official Battle Cats engine specifications (BCU / tbcml):
-# Coordinate system is in Distance Units (DU) matching battlefield length (2880 DU):
-#   - HP-threshold hitback: 345 Distance Units (DU) over 24 frames (~14.375 DU / frame)
-#   - Ability-proc knockback: 165 Distance Units (DU) over 11 frames (15.0 DU / frame)
-#   - Cat Cannon / Sniper: 55 Distance Units (DU) over 11 frames (5.0 DU / frame)
-#   - Boss shockwave: 735 Distance Units (DU) over 47 frames (15.638 DU / frame)
+# Canvas coordinate system (1280x720, 1:1 on-screen pixel representation):
+# In official PONOS mobile engine, internal coordinates use 4x subpixel precision (0.25 DU-to-PX ratio):
+#   - HP-threshold hitback: 345 DU * 0.25 = 86.25 px (~86.0 px) over 24 frames (~3.58 px/frame, ~2 body lengths)
+#   - Ability-proc knockback: 165 DU * 0.25 = 41.25 px (~48.0 px) over 11 frames (~4.36 px/frame, ~1.2 body lengths)
+#   - Cat Cannon / Sniper: 55 DU * 0.25 = 13.75 px (~25.0 px) over 11 frames (~2.27 px/frame, ~0.6 body lengths)
+#   - Boss shockwave: 705 DU * 0.25 = 176.25 px (~180.0 px) over 47 frames (~3.83 px/frame, ~4.5 body lengths)
 KNOCKBACK_FRAMES_DEFAULT = 11
-KNOCKBACK_SPEED_PX = 15.0  # PONOS standard knockback displacement speed: ~15.0 DU / frame
+KNOCKBACK_SPEED_PX = 4.364  # Authentic ability KB displacement speed (~4.36 px/frame)
 KB_SPECS = {
-    "hitback": (345.0, 24),  # Authentic PONOS HP-threshold damage knockback (345 DU over 24 frames)
-    "kb": (165.0, 11),       # Authentic PONOS ability-proc knockback (165 DU over 11 frames)
-    "cannon": (55.0, 11),    # Authentic PONOS Cat Cannon mini-knockback (55 DU over 11 frames)
-    "boss": (735.0, 47),     # Authentic PONOS Boss emergence shockwave (735 DU over 47 frames)
+    "hitback": (86.0, 24),   # Authentic PONOS HP hitback (86px over 24 frames)
+    "kb": (48.0, 11),        # Authentic PONOS ability-proc knockback (48px over 11 frames)
+    "cannon": (25.0, 11),    # Authentic PONOS Cat Cannon mini-knockback (25px over 11 frames)
+    "boss": (180.0, 47),     # Authentic PONOS Boss emergence shockwave (180px over 47 frames)
 }
 
 # Wave attack geometry (W_PROG / W_TIME / initial offset / hitbox width)

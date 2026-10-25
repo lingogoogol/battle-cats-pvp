@@ -93,7 +93,7 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
                 self.assertIsNone(sim.units[TEAM_CAT][tank.slot], "Slot must be freed after death slide")
 
         total_slide = abs(tank.pos_x - pos_before_death)
-        self.assertAlmostEqual(total_slide, 345.0, delta=1.0)
+        self.assertAlmostEqual(total_slide, 86.0, delta=1.0)
         print(f" -> Authentic death knockback verified: slid {total_slide:.1f}px backward over 24 frames, released soul.")
 
     def test_02_cat_3kb_multi_threshold_parity(self):
@@ -183,7 +183,7 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         print(" -> Symmetrical PvP verified: Castles, wallets, and cannon charges 100% synchronized.")
 
     def test_05_ability_knockback_vs_hitback_physics(self):
-        """Verifies Ability Proc knockback (165px / 11f) vs Damage Hitback (345px / 24f)."""
+        """Verifies Ability Proc knockback (48px / 11f) vs Damage Hitback (86px / 24f)."""
         sim = BattleSimulation()
         cat = sim.spawn_custom_unit({
             "name": "Cat", "hp": 10000, "attack_power": 1, "speed": 0, "knockback_count": 10
@@ -200,14 +200,14 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertTrue(cat.is_in_knockback())
         self.assertEqual(cat.kb_total_frames, 11)
         self.assertEqual(cat.knockback_timer, 11)
-        self.assertEqual(cat.kb_distance, 165.0)
+        self.assertEqual(cat.kb_distance, 48.0)
 
         pos_before = cat.pos_x
         for _ in range(11):
             sim.step()
         self.assertFalse(cat.is_in_knockback())
         disp = abs(cat.pos_x - pos_before)
-        self.assertAlmostEqual(disp, 165.0, delta=1.0)
+        self.assertAlmostEqual(disp, 48.0, delta=1.0)
         print(f" -> Ability KB verified: exactly {disp:.1f}px over 11 frames.")
 
     def test_06_zombie_death_kb_then_corpse_parity(self):
