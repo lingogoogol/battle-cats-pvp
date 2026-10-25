@@ -992,17 +992,15 @@ function onReceiveRoomState(st) {
         }
         // Authentic PONOS Battle Cats: NO floating damage text pops up on attack;
         // only the official 000_a.png hit spark and critical hit star appear.
+        const rad = ev.radius || 20;
         const jy = (Math.random() - 0.5) * 8;
         const hitX = ev.target_is_castle
-          ? (ev.team === TEAM_CAT ? ev.x - 50 : ev.x + 50)
-          : (ev.team === TEAM_CAT
-            ? ev.x - 48 - (ev.radius || 20) * 0.5
-            : ev.x + 48 + (ev.radius || 20) * 0.5);
-        const rad = ev.radius || 24;
+          ? (ev.team === TEAM_CAT ? ev.x - 35 : ev.x + 35)
+          : (ev.team === TEAM_CAT ? ev.x - rad * 0.8 : ev.x + rad * 0.8);
         const targetY = Math.max(GROUND_Y - 120, GROUND_Y - rad - 6 + jy);
         if (fxHitSparks.length < 16) {
           fxHitSparks.push({
-            x: hitX + (Math.random() - 0.5) * 8,
+            x: hitX + (Math.random() - 0.5) * 6,
             y: targetY,
             isCrit: !!ev.is_crit,
             age: 0,
@@ -1017,9 +1015,10 @@ function onReceiveRoomState(st) {
       } else if (ev.type === "knockback") {
         const rad = ev.radius || 20;
         const targetY = Math.max(GROUND_Y - 120, GROUND_Y - rad - 4);
+        const sparkX = ev.team === TEAM_CAT ? ev.x - rad * 0.8 : ev.x + rad * 0.8;
         if (fxHitSparks.length < 16) {
           fxHitSparks.push({
-            x: ev.x + (ev.team === TEAM_CAT ? -48 : 48),
+            x: sparkX,
             y: targetY,
             isCrit: false,
             age: 0,
@@ -1027,7 +1026,7 @@ function onReceiveRoomState(st) {
         }
         if (fxDust.length < 10) {
           fxDust.push({
-            x: ev.x + (ev.team === TEAM_CAT ? -48 : 48),
+            x: sparkX,
             y: GROUND_Y - 4,
             age: 0,
             maxLife: 10,
