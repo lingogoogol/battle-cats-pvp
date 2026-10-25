@@ -16,7 +16,8 @@ from typing import List, Dict, Any, Optional, Union, Tuple
 from ..core.constants import (
     MAX_UNITS_PER_TEAM, SLOT_CASTLE, TEAM_CAT, TEAM_ENEMY,
     KNOCKBACK_FRAMES_DEFAULT, KNOCKBACK_SPEED_PX, KB_SPECS,
-    WAVE_PROG, WAVE_SEG_FRAMES, WAVE_INI_CAT, WAVE_INI_ENEMY, WAVE_WIDTH_CAT, WAVE_WIDTH_ENEMY
+    WAVE_PROG, WAVE_SEG_FRAMES, WAVE_INI_CAT, WAVE_INI_ENEMY, WAVE_WIDTH_CAT, WAVE_WIDTH_ENEMY,
+    SLOW_SPEED_DU_PER_FRAME, BOSS_DEATH_SLOWMO_FRAMES, DEFAULT_ZOMBIE_REVIVE_FRAMES, DEFAULT_WARP_DISTANCE_DU
 )
 from ..core.unit_data import CAT_REGISTRY, ENEMY_REGISTRY, ROW_TO_ENEMY_KEY
 from ..core.damage_engine import NativeDamageEngine
@@ -683,7 +684,7 @@ class BattleSimulation:
                 self.wallets[opp_team].add_money(bounty)
             if getattr(u, "is_boss", False) and not getattr(u, "boss_death_triggered", False):
                 u.boss_death_triggered = True
-                self.slow_motion_timer = 45
+                self.slow_motion_timer = BOSS_DEATH_SLOWMO_FRAMES
                 self._emit_event({"type": "boss_death", "x": u.pos_x, "team": u.team, "name": u.name, "boss_name": u.name})
 
     def find_free_slot(self, team: int) -> Optional[int]:
@@ -1078,7 +1079,7 @@ class BattleSimulation:
                     # Free to advance [VERIFIED 0x0095a494 return 1]
                     # In PONOS Battle Cats CSV, speed is in half-pixels per frame (speed * 0.5 at 30 FPS)
                     unit.is_moving = True
-                    effective_speed = 0.25 if unit.is_slowed() else max(0.5, unit.speed * 0.5)
+                    effective_speed = SLOW_SPEED_DU_PER_FRAME if unit.is_slowed() else max(0.5, unit.speed * 0.5)
                     unit.pos_x += direction * effective_speed
                     unit.pos_x = max(c_enemy_x, min(c_cat_x, unit.pos_x))
                     if unit.anim_state != "walk":
@@ -1614,7 +1615,7 @@ class BattleSimulation:
                     warp_dur = max(10, int(attacker.abilities.get("warp_dur", 60)))
                     w_min = int(attacker.abilities.get("warp_min", 0))
                     w_max = int(attacker.abilities.get("warp_max", 0))
-                    disp = self.rng.randint(min(w_min, w_max), max(w_min, w_max)) if (w_min or w_max) else 150
+                    disp = self.rng.randint(min(w_min, w_max), max(w_min, w_max)) if (w_min or w_max) else DEFAULT_WARP_DISTANCE_DU
                     c_enemy_x = self.get_castle(TEAM_ENEMY).pos_x
                     c_cat_x = self.get_castle(TEAM_CAT).pos_x
                     target_dir = -1 if target.team == TEAM_CAT else 1
@@ -1649,7 +1650,7 @@ class BattleSimulation:
                 self.wallets[opp_team].add_money(bounty)
             if getattr(target, "is_boss", False) and not getattr(target, "boss_death_triggered", False):
                 target.boss_death_triggered = True
-                self.slow_motion_timer = 45
+                self.slow_motion_timer = BOSS_DEATH_SLOWMO_FRAMES
                 self._emit_event({
                     "type": "boss_death",
                     "x": target.pos_x,
@@ -1699,7 +1700,7 @@ class BattleSimulation:
                             unit.revive_left -= 1
                             unit.is_corpse = True
                             unit.is_dying = False
-                            unit.corpse_timer = max(1, int(unit.abilities.get("revive_time", 240)))
+                            unit.corpse_timer = max(1, int(unit.abilities.get("revive_time", DEFAULT_ZOMBIE_REVIVE_FRAMES)))
                             unit.anim_state = "corpse"
                             self._emit_event({"type": "corpse", "x": unit.pos_x, "team": unit.team, "name": unit.name})
                             continue
@@ -1730,7 +1731,7 @@ class BattleSimulation:
                         self.wallets[opp_team].add_money(bounty)
                     if getattr(unit, "is_boss", False) and not getattr(unit, "boss_death_triggered", False):
                         unit.boss_death_triggered = True
-                        self.slow_motion_timer = 45
+                        self.slow_motion_timer = BOSS_DEATH_SLOWMO_FRAMES
                         self._emit_event({
                             "type": "boss_death", "x": unit.pos_x, "team": unit.team, "name": unit.name, "boss_name": unit.name
                         })

@@ -40,6 +40,13 @@ WAVE_INI_ENEMY = -32.75
 WAVE_WIDTH_CAT = 400.0
 WAVE_WIDTH_ENEMY = 500.0
 
+# Official PONOS Ability & Status Effect Physics Specifications
+# Verified via AArch64 binary reverse engineering & decrypted CSV tables:
+SLOW_SPEED_DU_PER_FRAME = 0.25      # Official PONOS formula: Slow status reduces movement speed to 0.5 DU -> 0.5 / 2 = 0.25 DU/f (7.5 DU/s)
+BOSS_DEATH_SLOWMO_FRAMES = 45       # Official PONOS dramatic boss defeat slow-motion window: 45 frames (1.5s at 30 FPS)
+DEFAULT_ZOMBIE_REVIVE_FRAMES = 240  # Official PONOS default zombie revive timer: 240 frames (8.0s at 30 FPS, matching Zombie Hippoe col 46)
+DEFAULT_WARP_DISTANCE_DU = 500.0    # Official PONOS Starred Alien warp displacement: 500.0 DU (matching col 67=2000 in quarter-DU)
+
 # Colors (Hex / RGB)
 COLOR_SKY = (180, 215, 245)
 COLOR_GROUND = (120, 180, 80)
