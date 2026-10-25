@@ -1674,37 +1674,37 @@ function renderBattleScene() {
       // Authentic PONOS knockback: unit slides horizontally in authentic 03.maanim hurt pose
       renderSkeletalRig(ctx, u.rig, u.anim, drawAf, sx, GROUND_Y + 4 + zOff, u.scale || 0.62, flipH);
 
-      // Starred Alien Barrier
+      // Starred Alien Barrier: Shimmering spherical plasma forcefield
       if (!u.is_dying && u.barrier > 0) {
         ctx.save();
-        const pulse = 0.8 + 0.2 * Math.sin(clientTick * 0.3);
-        ctx.strokeStyle = `rgba(56, 189, 248, ${0.7 * pulse})`;
-        ctx.lineWidth = 3;
+        const pulse = 0.82 + 0.18 * Math.sin(clientTick * 0.35);
+        const cy = GROUND_Y - 38 + zOff;
+        const grad = ctx.createRadialGradient(sx, cy, 4, sx, cy, 30);
+        grad.addColorStop(0, "rgba(56, 189, 248, 0.05)");
+        grad.addColorStop(0.7, `rgba(56, 189, 248, ${0.22 * pulse})`);
+        grad.addColorStop(1, `rgba(186, 230, 253, ${0.85 * pulse})`);
+        ctx.fillStyle = grad;
+        ctx.strokeStyle = `rgba(186, 230, 253, ${0.9 * pulse})`;
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        ctx.arc(sx, GROUND_Y - 38 + zOff, 28, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fillStyle = `rgba(56, 189, 248, ${0.15 * pulse})`;
+        ctx.arc(sx, cy, 28, 0, Math.PI * 2);
         ctx.fill();
+        ctx.stroke();
         ctx.restore();
       }
 
-      // Aku Shield
+      // Authentic Aku Shield: Official PONOS Aku Crest (img002_tw cut 54: 337, 532, 60, 67)
       if (!u.is_dying && u.shield > 0) {
         ctx.save();
-        const shX = u.team === TEAM_CAT ? sx + 16 : sx - 28;
-        ctx.fillStyle = "rgba(217, 70, 239, 0.6)";
-        ctx.strokeStyle = "rgba(240, 171, 252, 0.9)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(shX + 12, GROUND_Y - 60 + zOff);
-        ctx.lineTo(shX + 24, GROUND_Y - 50 + zOff);
-        ctx.lineTo(shX + 20, GROUND_Y - 20 + zOff);
-        ctx.lineTo(shX + 12, GROUND_Y - 14 + zOff);
-        ctx.lineTo(shX + 4, GROUND_Y - 20 + zOff);
-        ctx.lineTo(shX, GROUND_Y - 50 + zOff);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
+        const shX = u.team === TEAM_CAT ? sx + 12 : sx - 34;
+        if (IMAGES.img002 && IMAGES.img002.complete) {
+          const pulse = 0.85 + 0.15 * Math.sin(clientTick * 0.25);
+          ctx.globalAlpha = 0.95 * pulse;
+          drawSubImage(ctx, IMAGES.img002, 337, 532, 60, 67, shX, GROUND_Y - 62 + zOff, 36, 40);
+        } else {
+          ctx.fillStyle = "rgba(217, 70, 239, 0.6)";
+          ctx.fillRect(shX, GROUND_Y - 50 + zOff, 20, 30);
+        }
         ctx.restore();
       }
 
