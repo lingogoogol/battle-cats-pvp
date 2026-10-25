@@ -77,20 +77,20 @@ class TestComprehensiveBattleParity(unittest.TestCase):
         self.sim._apply_damage(attacker, doge, direction=-1, hit_damage=120)
 
         self.assertTrue(doge.is_in_knockback())
-        self.assertEqual(doge.knockback_timer, 24)
+        self.assertEqual(doge.knockback_timer, 12)
 
         prev_x = doge.pos_x
-        for f in range(24):
+        for f in range(12):
             self.sim.step()
             dx = prev_x - doge.pos_x
-            self.assertAlmostEqual(dx, 345.0 / 24.0, places=4, msg=f"Constant velocity on frame {f}")
+            self.assertAlmostEqual(dx, 86.0 / 12.0, places=4, msg=f"Constant velocity on frame {f}")
             prev_x = doge.pos_x
 
         self.assertFalse(doge.is_in_knockback())
-        self.assertAlmostEqual(1000.0 - doge.pos_x, 345.0, places=2)
+        self.assertAlmostEqual(1000.0 - doge.pos_x, 86.0, places=2)
 
     def test_04_constant_velocity_ability_kb(self):
-        """Authentic PONOS 165 DU over 11 frames at constant 15.0 DU/frame."""
+        """Authentic PONOS 48.0 px over 11 frames (~4.364 px/frame, ~1 body length)."""
         cat = self.sim.spawn_custom_unit("cat", team=TEAM_CAT)
         cat.pos_x = 2000.0
 
@@ -102,11 +102,11 @@ class TestComprehensiveBattleParity(unittest.TestCase):
         for f in range(11):
             self.sim.step()
             dx = cat.pos_x - prev_x  # Cat is team 0, knocks back right (+x)
-            self.assertAlmostEqual(dx, 15.0, places=4, msg=f"Ability KB constant 15 DU/f on frame {f}")
+            self.assertAlmostEqual(dx, 48.0 / 11.0, places=4, msg=f"Ability KB constant 48/11 px/f on frame {f}")
             prev_x = cat.pos_x
 
         self.assertFalse(cat.is_in_knockback())
-        self.assertAlmostEqual(cat.pos_x - 2000.0, 165.0, places=2)
+        self.assertAlmostEqual(cat.pos_x - 2000.0, 48.0, places=2)
 
     def test_05_rebound_attack_parity(self):
         """Knockback cancels windup and resets cycle_timer so unit can attack immediately."""

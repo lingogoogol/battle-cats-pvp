@@ -347,7 +347,7 @@ class BattleRoom:
                             "atk_id": int(getattr(u, "attack_cycle_id", 0)),
                             "spd": float(u.speed),
                             "kb_t": int(u.knockback_timer),
-                            "kb_total": int(getattr(u, "kb_total_frames", 24)),
+                            "kb_total": int(getattr(u, "kb_total_frames", 12)),
                             "frz": int(u.freeze_timer),
                             "slw": int(u.slow_timer),
                             "scale": float(u.spec.get("render_scale", 0.62)),
