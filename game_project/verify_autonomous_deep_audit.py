@@ -72,29 +72,29 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertFalse(tank.is_alive)
         self.assertTrue(tank.is_dying)
         self.assertTrue(tank.is_in_knockback())
-        self.assertEqual(tank.knockback_timer, 12)
-        print(" -> Lethal blow entered death knockback: 12 frames initialized.")
+        self.assertEqual(tank.knockback_timer, 24)
+        print(" -> Lethal blow entered death knockback: 24 frames initialized.")
 
         # Living enemy should NOT target dying tank cat
         self.assertFalse(sim._can_unit_target_opponent(dummy_enemy, tank))
 
-        # Step 12 frames through the death knockback slide
-        for frame in range(1, 13):
+        # Step 24 frames through the death knockback slide
+        for frame in range(1, 25):
             sim.step()
             events = sim.consume_visual_events()
-            if frame < 12:
+            if frame < 24:
                 # Still sliding
                 self.assertIsNotNone(sim.units[TEAM_CAT][tank.slot], "Slot must remain occupied during death slide")
                 self.assertTrue(tank.is_in_knockback())
             else:
-                # On frame 12, knockback completes, soul emitted, slot cleared
+                # On frame 24, knockback completes, soul emitted, slot cleared
                 death_events = [ev for ev in events if ev["type"] == "death"]
                 self.assertEqual(len(death_events), 1, "Must emit death event for soul ascension on final frame")
                 self.assertIsNone(sim.units[TEAM_CAT][tank.slot], "Slot must be freed after death slide")
 
         total_slide = abs(tank.pos_x - pos_before_death)
-        self.assertAlmostEqual(total_slide, 86.0, delta=1.0)
-        print(f" -> Authentic death knockback verified: slid {total_slide:.1f}px backward over 12 frames, released soul.")
+        self.assertAlmostEqual(total_slide, 345.0, delta=1.0)
+        print(f" -> Authentic death knockback verified: slid {total_slide:.1f}px backward over 24 frames, released soul.")
 
     def test_02_cat_3kb_multi_threshold_parity(self):
         """Verify Cat (3-KB): knocks back at 33% and 66% HP damage, then death knockback at 100%."""
@@ -118,8 +118,8 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertTrue(cat.is_alive)
         self.assertFalse(cat.is_dying)
 
-        # Step out of KB
-        for _ in range(12):
+        # Step out of KB (24 frames)
+        for _ in range(24):
             sim.step()
         self.assertFalse(cat.is_in_knockback())
 
@@ -130,7 +130,7 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertTrue(cat.is_alive)
         self.assertFalse(cat.is_dying)
 
-        for _ in range(12):
+        for _ in range(24):
             sim.step()
         self.assertFalse(cat.is_in_knockback())
 
@@ -141,7 +141,7 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertTrue(cat.is_dying)
         self.assertTrue(cat.is_in_knockback())
 
-        for _ in range(12):
+        for _ in range(24):
             sim.step()
         self.assertIsNone(sim.units[TEAM_CAT][cat.slot])
         print(" -> Multi-KB verified: 2 intermediate hitbacks + 1 final death knockback.")
@@ -183,7 +183,7 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         print(" -> Symmetrical PvP verified: Castles, wallets, and cannon charges 100% synchronized.")
 
     def test_05_ability_knockback_vs_hitback_physics(self):
-        """Verifies Ability Proc knockback (48px / 11f) vs Damage Hitback (86px / 12f)."""
+        """Verifies Ability Proc knockback (165px / 11f) vs Damage Hitback (345px / 24f)."""
         sim = BattleSimulation()
         cat = sim.spawn_custom_unit({
             "name": "Cat", "hp": 10000, "attack_power": 1, "speed": 0, "knockback_count": 10
@@ -200,18 +200,18 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertTrue(cat.is_in_knockback())
         self.assertEqual(cat.kb_total_frames, 11)
         self.assertEqual(cat.knockback_timer, 11)
-        self.assertEqual(cat.kb_distance, 48.0)
+        self.assertEqual(cat.kb_distance, 165.0)
 
         pos_before = cat.pos_x
         for _ in range(11):
             sim.step()
         self.assertFalse(cat.is_in_knockback())
         disp = abs(cat.pos_x - pos_before)
-        self.assertAlmostEqual(disp, 48.0, delta=1.0)
+        self.assertAlmostEqual(disp, 165.0, delta=1.0)
         print(f" -> Ability KB verified: exactly {disp:.1f}px over 11 frames.")
 
     def test_06_zombie_death_kb_then_corpse_parity(self):
-        """Verifies that Zombie units perform 12-frame death knockback BEFORE turning into a corpse."""
+        """Verifies that Zombie units perform 24-frame death knockback BEFORE turning into a corpse."""
         sim = BattleSimulation()
         zombie = sim.spawn_custom_unit({
             "name": "Zombo", "hp": 500, "attack_power": 10, "speed": 0, "knockback_count": 1,
@@ -232,14 +232,14 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertFalse(getattr(zombie, "is_corpse", False))
         self.assertTrue(zombie.is_in_knockback())
 
-        # Step through 12 frames of death knockback
-        for f in range(1, 13):
+        # Step through 24 frames of death knockback
+        for f in range(1, 25):
             sim.step()
-            if f < 12:
+            if f < 24:
                 self.assertTrue(zombie.is_in_knockback())
                 self.assertFalse(getattr(zombie, "is_corpse", False))
             else:
-                # After 12 frames, transitions to corpse
+                # After 24 frames, transitions to corpse
                 self.assertFalse(zombie.is_in_knockback())
                 self.assertTrue(getattr(zombie, "is_corpse", False))
                 self.assertEqual(zombie.corpse_timer, 60)
@@ -264,7 +264,7 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertTrue(zombie.killed_by_zombie_killer)
         self.assertTrue(zombie.is_dying)
 
-        for _ in range(12):
+        for _ in range(24):
             sim.step()
 
         self.assertIsNone(sim.units[TEAM_ENEMY][zombie.slot])

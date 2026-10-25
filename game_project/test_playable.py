@@ -97,9 +97,9 @@ class TestPlayableBattle(unittest.TestCase):
         doge = self.sim.units[TEAM_ENEMY][1]
         self.assertIsNotNone(doge)
 
-        # Kill doge
+        # Kill doge (enters 24-frame death knockback before slot is cleared)
         doge.hp = 0
-        for _ in range(13):
+        for _ in range(25):
             self.sim.step()
         # Unit reaches 0 HP, completes death knockback, and is cleaned from the slot
         self.assertIsNone(self.sim.units[TEAM_ENEMY][1], "Dead unit was not cleared from slot upon death")

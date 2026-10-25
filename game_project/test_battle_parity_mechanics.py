@@ -232,9 +232,9 @@ class TestBattleParityMechanics(unittest.TestCase):
             "speed": 0
         }, team=TEAM_CAT)
 
-        # Normal cat kills zombie: enters 12-frame death knockback before collapsing to corpse
+        # Normal cat kills zombie: enters 24-frame death knockback before collapsing to corpse
         self.sim._apply_damage(normal_cat, zombie, direction=-1, hit_damage=150)
-        for _ in range(12):
+        for _ in range(24):
             self.sim.step()
 
         # Zombie should enter corpse state after death knockback completes
@@ -260,7 +260,7 @@ class TestBattleParityMechanics(unittest.TestCase):
         }, team=TEAM_CAT)
 
         self.sim._apply_damage(zk_cat, zombie, direction=-1, hit_damage=100)
-        for _ in range(12):
+        for _ in range(24):
             self.sim.step()
 
         # Killed by zombie killer: permanently destroyed and cleaned from slot after death knockback

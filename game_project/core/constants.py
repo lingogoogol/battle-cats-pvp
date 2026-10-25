@@ -18,18 +18,18 @@ TEAM_ENEMY = 1
 
 # Knockback & motion constants.
 # Native RE (Phase 10-14) and official Battle Cats engine specifications (BCU / tbcml):
-# Canvas coordinate system (1280x720, battlefield length 3200):
-#   - HP-threshold hitback: 86.0 pixels over 12 frames (~7.167 px/frame, ~1.5 body lengths)
-#   - Ability-proc knockback: 48.0 pixels over 11 frames (~4.364 px/frame, ~1 body length)
-#   - Cat Cannon / Sniper: 25.0 pixels over 8 frames (~3.125 px/frame, ~0.5 body length)
-#   - Boss shockwave: 180.0 pixels over 47 frames (~3.830 px/frame)
+# Coordinate system is in Distance Units (DU) matching battlefield length (2880 DU):
+#   - HP-threshold hitback: 345 Distance Units (DU) over 24 frames (~14.375 DU / frame)
+#   - Ability-proc knockback: 165 Distance Units (DU) over 11 frames (15.0 DU / frame)
+#   - Cat Cannon / Sniper: 55 Distance Units (DU) over 11 frames (5.0 DU / frame)
+#   - Boss shockwave: 735 Distance Units (DU) over 47 frames (15.638 DU / frame)
 KNOCKBACK_FRAMES_DEFAULT = 11
-KNOCKBACK_SPEED_PX = 4.364  # Authentic ability KB displacement speed (~4.36 px/frame)
+KNOCKBACK_SPEED_PX = 15.0  # PONOS standard knockback displacement speed: ~15.0 DU / frame
 KB_SPECS = {
-    "hitback": (86.0, 12),   # Authentic PONOS HP-threshold damage knockback (86px over 12 frames)
-    "kb": (48.0, 11),        # Authentic PONOS ability-proc knockback (48px over 11 frames)
-    "cannon": (25.0, 8),     # Authentic PONOS Cat Cannon mini-knockback (25px over 8 frames)
-    "boss": (180.0, 47),     # Authentic PONOS Boss emergence shockwave (180px over 47 frames)
+    "hitback": (345.0, 24),  # Authentic PONOS HP-threshold damage knockback (345 DU over 24 frames)
+    "kb": (165.0, 11),       # Authentic PONOS ability-proc knockback (165 DU over 11 frames)
+    "cannon": (55.0, 11),    # Authentic PONOS Cat Cannon mini-knockback (55 DU over 11 frames)
+    "boss": (735.0, 47),     # Authentic PONOS Boss emergence shockwave (735 DU over 47 frames)
 }
 
 # Wave attack geometry (W_PROG / W_TIME / initial offset / hitbox width)
