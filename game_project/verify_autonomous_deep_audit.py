@@ -174,7 +174,7 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertEqual(sim.wallet.money, sim.p2_wallet.money)
         self.assertEqual(sim.wallet.max_money, sim.p2_wallet.max_money)
         self.assertEqual(sim.cannon_charge, sim.p2_cannon_charge)
-        self.assertEqual(sim.cannon_max_charge, 150)
+        self.assertEqual(sim.cannon_max_charge, 2400) # 2850 - 450 = 2400 frames (80.0s)
 
         # Both earn money at the identical treasure-boosted rate
         for _ in range(30):
@@ -292,6 +292,38 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertEqual(cat.windup_timer, 0)
         self.assertEqual(cat.cycle_timer, 0)
         print(" -> Windup Interrupt Rebound verified: windup cancelled and cycle timer reset to 0.")
+
+    def test_09_official_cat_cannon_recharge_formula_and_hard_cap(self):
+        """Verifies official Cat Cannon formula: 2850f base at Lv 1, -50f per charge lv, +50f per power lv, 950f hard floor."""
+        # 1. Unupgraded Lv 1, 0 treasures -> 2850 frames (95.0s)
+        sim_unupgraded = BattleSimulation(treasures={"eoc_chapters": 0.0})
+        self.assertEqual(sim_unupgraded.cannon_max_charge, 2850)
+
+        # 2. Lv 1 with 3 chapters EoC treasures (-450f) -> 2400 frames (80.0s)
+        sim_eoc = BattleSimulation(treasures={"eoc_chapters": 3.0})
+        self.assertEqual(sim_eoc.cannon_max_charge, 2400)
+
+        # 3. Maxed Charge level (Lv 30) + Max Power (Lv 1) + Max treasures -> Clamped to 950f (31.67s) hard floor
+        sim_max = BattleSimulation(
+            base_levels={"cannon_charge": 30, "cannon_power": 1},
+            treasures={"eoc_chapters": 3.0, "cannon_charge_reduction": 1350}
+        )
+        self.assertEqual(sim_max.cannon_max_charge, 950, "Cannon recharge MUST be clamped at 950 frames (31.67s)")
+        print(" -> Cat Cannon Recharge Parity verified: 2850f base down to 950f hard floor (31.67s).")
+
+    def test_10_normal_cannon_wave_immunity_interaction(self):
+        """Verifies that Normal Cat Cannon wave deals 0 dmg and 0 KB to enemies with wave_immune."""
+        sim = BattleSimulation()
+        immune_doge = sim.spawn_custom_unit({
+            "name": "Wave Immune Doge", "hp": 500, "attack_power": 10, "speed": 0,
+            "abilities": {"wave_immune": True}
+        }, team=TEAM_ENEMY)
+        immune_doge.pos_x = sim.get_castle(TEAM_CAT).pos_x - 100
+
+        sim._cannon_hit(immune_doge, opp_team=TEAM_ENEMY, ctype="normal")
+        self.assertEqual(immune_doge.hp, 500, "Wave immune unit must take 0 damage from normal cannon")
+        self.assertFalse(immune_doge.is_in_knockback(), "Wave immune unit must NOT be knocked back by normal cannon")
+        print(" -> Normal Cannon Wave Immunity Parity verified: 0 damage and 0 knockback.")
 
 
 if __name__ == "__main__":

@@ -395,7 +395,7 @@ class BattleRoom:
                     "worker_lv": int(w.level),
                     "worker_cost": int(w.upgrade_cost) if w.upgrade_cost is not None else None,
                     "cannon_charge": int(c_charge),
-                    "cannon_max": int(sim.cannon_max_charge),
+                    "cannon_max": int(sim.cannon_max_charge if t_id == TEAM_CAT else getattr(sim, "p2_cannon_max_charge", sim.cannon_max_charge)),
                     "cannon_anim": int(c_anim),
                     "castle_hp": int(castle.hp) if castle else 0,
                     "castle_max_hp": int(castle.max_hp) if castle else 1,

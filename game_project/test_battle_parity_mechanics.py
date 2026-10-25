@@ -509,7 +509,7 @@ class TestBattleParityMechanics(unittest.TestCase):
         cat_c = sim.get_castle(TEAM_CAT)
         self.assertEqual(cat_c.max_hp, 22000) # 1000 base + 21000 treasure
         self.assertEqual(sim.cannon_power, 1750) # 250 base + 1500 treasure
-        self.assertEqual(sim.cannon_max_charge, 150) # 600 - 450 = 150 frames
+        self.assertEqual(sim.cannon_max_charge, 2400) # 2850 - 450 = 2400 frames (80.0s)
         self.assertEqual(sim.wallet.max_money, 3500) # 500 base + 3000 treasure
 
         # Deploy cat and verify 2.5x HP and 2.5x ATK applied

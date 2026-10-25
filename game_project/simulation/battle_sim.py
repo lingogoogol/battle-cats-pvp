@@ -254,8 +254,21 @@ class BattleSimulation:
         cannon_pwr_lv = base_levels.get("cannon_power", 1)
         self.cannon_charge: int = 0
         self.p2_cannon_charge: int = 0
-        base_max_charge = max(300, 600 - (cannon_charge_lv - 1) * 20)
-        self.cannon_max_charge: int = max(150, base_max_charge - t0_tr["cannon_charge_reduction"])
+        
+        # [REA-DEPRECATED-SYNTHETIC-PATCH: Area 1 - Removed fake 150-frame cannon charge]
+        # Restored to official Battle Cats Cannon Recharge formula:
+        # Base Lv 1: 2,850 frames (95.0s)
+        # Charge Level: -50 frames per level
+        # Power Level: +50 frames per level
+        # EoC Treasures (Hokkaido): -150 frames per chapter (up to -450 frames for 3 chapters)
+        # Hard Minimum Floor: 950 frames (31.67s)
+        nominal_charge_t0 = 2850 - 50 * (cannon_charge_lv - 1) + 50 * (cannon_pwr_lv - 1) - t0_tr.get("cannon_charge_reduction", 0)
+        self.cannon_max_charge: int = max(950, nominal_charge_t0)
+        
+        p2_charge_lv = (p2_base_levels or {}).get("cannon_charge", cannon_charge_lv)
+        p2_pwr_lv = (p2_base_levels or {}).get("cannon_power", cannon_pwr_lv)
+        nominal_charge_t1 = 2850 - 50 * (p2_charge_lv - 1) + 50 * (p2_pwr_lv - 1) - t1_tr.get("cannon_charge_reduction", 0)
+        self.p2_cannon_max_charge: int = max(950, nominal_charge_t1)
         
         # Authentic PONOS Cat Cannon Range: 2355 DU base at Lv 1, +405 DU / level, Max Lv 10 = 6000 DU
         c_range_lv = base_levels.get("cannon_range", 10)
@@ -383,11 +396,13 @@ class BattleSimulation:
 
     def is_cannon_ready(self, team: int = TEAM_CAT) -> bool:
         charge = self.cannon_charge if team == TEAM_CAT else self.p2_cannon_charge
-        return charge >= self.cannon_max_charge
+        max_ch = self.cannon_max_charge if team == TEAM_CAT else getattr(self, "p2_cannon_max_charge", self.cannon_max_charge)
+        return charge >= max_ch
 
     def get_cannon_ratio(self, team: int = TEAM_CAT) -> float:
         charge = self.cannon_charge if team == TEAM_CAT else self.p2_cannon_charge
-        return min(1.0, float(charge) / float(self.cannon_max_charge))
+        max_ch = self.cannon_max_charge if team == TEAM_CAT else getattr(self, "p2_cannon_max_charge", self.cannon_max_charge)
+        return min(1.0, float(charge) / float(max_ch))
 
     def fire_cannon(self, team: int = TEAM_CAT) -> bool:
         """Fires the Cat Cannon for `team` across the battlefield with authentic sub-type mechanics."""
@@ -631,13 +646,15 @@ class BattleSimulation:
             self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
         else: # "normal"
+            # Authentic PONOS Default Cat Cannon: wave blast knocks back even normally immune enemies,
+            # but is completely blocked/nullified by wave_immune or wave_blocker!
+            if u.abilities.get("wave_immune", False) or u.abilities.get("wave_blocker", False):
+                return
             dmg = 1 if ("metal" in u.traits or u.abilities.get("is_metal")) else self.cannon_power
             u.hp -= dmg
-            # Authentic PONOS Default Cat Cannon: wave blast knocks back even normally immune enemies
-            # (only wave_immune or wave_blocker units are unaffected)
-            if not (u.abilities.get("wave_immune", False) or u.abilities.get("wave_blocker", False)):
-                self._knockback(u, "cannon")
-                self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
+            self._knockback(u, "cannon")
+            self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
+            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
             self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "is_crit": True, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
         if u.hp <= 0 and u.slot != SLOT_CASTLE and not getattr(u, "is_dying", False):
