@@ -232,11 +232,12 @@ class TestBattleParityMechanics(unittest.TestCase):
             "speed": 0
         }, team=TEAM_CAT)
 
-        # Normal cat kills zombie
+        # Normal cat kills zombie: enters 12-frame death knockback before collapsing to corpse
         self.sim._apply_damage(normal_cat, zombie, direction=-1, hit_damage=150)
-        self.sim.step()
+        for _ in range(12):
+            self.sim.step()
 
-        # Zombie should enter corpse state rather than dying permanently
+        # Zombie should enter corpse state after death knockback completes
         self.assertTrue(zombie.is_corpse)
         self.assertFalse(zombie.is_alive)
 
@@ -259,9 +260,10 @@ class TestBattleParityMechanics(unittest.TestCase):
         }, team=TEAM_CAT)
 
         self.sim._apply_damage(zk_cat, zombie, direction=-1, hit_damage=100)
-        self.sim.step()
+        for _ in range(12):
+            self.sim.step()
 
-        # Killed by zombie killer: permanently destroyed and cleaned from slot
+        # Killed by zombie killer: permanently destroyed and cleaned from slot after death knockback
         self.assertFalse(zombie.is_corpse)
         self.assertIsNone(self.sim.units[TEAM_ENEMY][1])
 

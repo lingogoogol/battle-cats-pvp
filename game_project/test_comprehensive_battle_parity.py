@@ -122,8 +122,8 @@ class TestComprehensiveBattleParity(unittest.TestCase):
         self.assertEqual(cat.cycle_timer, 0)
         self.assertEqual(cat.attack_cooldown_timer, 0)
 
-    def test_06_instant_death_on_spot(self):
-        """Lethal blow immediately clears unit slot on the spot without knockback sliding."""
+    def test_06_death_knockback_then_soul_parity(self):
+        """Lethal blow triggers death knockback first; once knockback finishes, soul releases and slot clears."""
         doge = self.sim.spawn_custom_unit("doge", team=TEAM_ENEMY)
         doge.pos_x = 800.0
         attacker = self.sim.spawn_custom_unit("cat", team=TEAM_CAT)
@@ -131,8 +131,43 @@ class TestComprehensiveBattleParity(unittest.TestCase):
 
         self.sim._apply_damage(attacker, doge, direction=-1, hit_damage=999)
         self.assertEqual(doge.hp, 0)
-        self.sim.step()
+        self.assertTrue(doge.is_dying)
+        self.assertTrue(doge.is_in_knockback())
+        self.assertEqual(doge.knockback_timer, 12)
+
+        for _ in range(12):
+            self.sim.step()
+
         self.assertIsNone(self.sim.units[TEAM_ENEMY][1])
+        ev_types = [ev["type"] for ev in self.sim.consume_visual_events()]
+        self.assertIn("death", ev_types)
+
+    def test_22_single_kb_unit_death_knockback_parity(self):
+        """1-KB units (Tank Cat, Titan Cat) do not knock back on partial damage, but MUST perform death knockback on lethal damage."""
+        tank = self.sim.spawn_custom_unit("tank_cat", team=TEAM_CAT)
+        tank.pos_x = 1000.0
+        self.assertEqual(tank.knockback_max, 1)
+
+        attacker = self.sim.spawn_custom_unit("doge", team=TEAM_ENEMY)
+        attacker.pos_x = 900.0
+
+        # Partial damage (100 out of 400 HP): should NOT knock back, holds the line
+        self.sim._apply_damage(attacker, tank, direction=1, hit_damage=100)
+        self.assertEqual(tank.hp, 300)
+        self.assertFalse(tank.is_in_knockback())
+        self.assertEqual(tank.pos_x, 1000.0)
+
+        # Lethal damage (300 remaining HP): MUST trigger death knockback
+        self.sim._apply_damage(attacker, tank, direction=1, hit_damage=300)
+        self.assertEqual(tank.hp, 0)
+        self.assertTrue(tank.is_dying)
+        self.assertTrue(tank.is_in_knockback())
+        self.assertEqual(tank.knockback_timer, 12)
+
+        for _ in range(12):
+            self.sim.step()
+
+        self.assertIsNone(self.sim.units[TEAM_CAT][1])
         ev_types = [ev["type"] for ev in self.sim.consume_visual_events()]
         self.assertIn("death", ev_types)
 

@@ -640,6 +640,24 @@ class BattleSimulation:
                 self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
             self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "is_crit": True, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
+        if u.hp <= 0 and u.slot != SLOT_CASTLE and not getattr(u, "is_dying", False):
+            u.hp = 0
+            u.is_alive = False
+            u.is_dying = True
+            u.freeze_timer = 0
+            u.slow_timer = 0
+            u.curse_timer = 0
+            self._knockback(u, "hitback")
+            self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": u.team, "kind": "hitback"})
+            if opp_team in self.wallets and u.money_drop > 0 and not getattr(u, "bounty_awarded", False):
+                u.bounty_awarded = True
+                bounty = int(u.money_drop * self.wallet_multipliers.get(opp_team, 1.0))
+                self.wallets[opp_team].add_money(bounty)
+            if getattr(u, "is_boss", False) and not getattr(u, "boss_death_triggered", False):
+                u.boss_death_triggered = True
+                self.slow_motion_timer = 45
+                self._emit_event({"type": "boss_death", "x": u.pos_x, "team": u.team, "name": u.name, "boss_name": u.name})
+
     def find_free_slot(self, team: int) -> Optional[int]:
         """Finds first empty slot in [1, 50]. Slot 0 reserved for Castle."""
         for slot in range(1, MAX_UNITS_PER_TEAM):
@@ -1576,19 +1594,48 @@ class BattleSimulation:
                     target.backswing_timer = 0
                     self._emit_event({"type": "warp_enter", "x": target.pos_x, "team": target.team, "dest_x": dest_x})
 
-        # 10. HP Threshold Knockback (0x00959cf4)
-        damage_taken = target.max_hp - target.hp
-        expected_kbs = int(damage_taken // max(1.0, target.kb_threshold))
-        if expected_kbs > target.kb_points_taken and target.hp > 0:
-            target.kb_points_taken = expected_kbs
+        # 10. HP Threshold Knockback & Death Knockback (0x00959cf4)
+        if target.hp <= 0 and target.slot != SLOT_CASTLE:
+            target.hp = 0
+            target.is_alive = False
+            target.is_dying = True
+            target.freeze_timer = 0
+            target.slow_timer = 0
+            target.curse_timer = 0
             self._knockback(target, "hitback")
             self._emit_event({
                 "type": "knockback", "x": target.pos_x, "radius": target.radius, "team": target.team, "kind": "hitback"
             })
+            opp_team = 1 - target.team
+            if opp_team in self.wallets and target.money_drop > 0 and not getattr(target, "bounty_awarded", False):
+                target.bounty_awarded = True
+                bounty = int(target.money_drop * self.wallet_multipliers.get(opp_team, 1.0))
+                if getattr(target, "killed_with_extra_money", False):
+                    bounty *= 2
+                self.wallets[opp_team].add_money(bounty)
+            if getattr(target, "is_boss", False) and not getattr(target, "boss_death_triggered", False):
+                target.boss_death_triggered = True
+                self.slow_motion_timer = 45
+                self._emit_event({
+                    "type": "boss_death",
+                    "x": target.pos_x,
+                    "team": target.team,
+                    "name": target.name,
+                    "boss_name": target.name
+                })
+        elif target.hp > 0:
+            damage_taken = target.max_hp - target.hp
+            expected_kbs = int(damage_taken // max(1.0, target.kb_threshold))
+            if expected_kbs > target.kb_points_taken:
+                target.kb_points_taken = expected_kbs
+                self._knockback(target, "hitback")
+                self._emit_event({
+                    "type": "knockback", "x": target.pos_x, "radius": target.radius, "team": target.team, "kind": "hitback"
+                })
 
     def _update_deaths_and_castles(self):
-        """Authentic Battle_KillUnit (0x008b6f50): a unit reaching 0 HP dies immediately on the spot,
-        clearing the slot, releasing soul particles, and awarding money with ZERO artificial knockback sliding."""
+        """Authentic Battle_KillUnit (0x008b6f50): a unit whose HP reaches 0 performs its final
+        death knockback; once the knockback finishes, it releases a soul particle and clears the slot."""
         for team in (TEAM_CAT, TEAM_ENEMY):
             opp_team = 1 - team
             for slot in range(1, MAX_UNITS_PER_TEAM):
@@ -1610,45 +1657,49 @@ class BattleSimulation:
                         self._emit_event({"type": "revive", "x": unit.pos_x, "team": unit.team, "name": unit.name})
                     continue
 
+                # If unit is dying, wait until its death knockback completes before releasing soul
+                if getattr(unit, "is_dying", False):
+                    if not unit.is_in_knockback():
+                        # Knockback finished! Check zombie revive or release soul
+                        if getattr(unit, "revive_left", 0) > 0 and not getattr(unit, "killed_by_zombie_killer", False):
+                            unit.revive_left -= 1
+                            unit.is_corpse = True
+                            unit.is_dying = False
+                            unit.corpse_timer = max(1, int(unit.abilities.get("revive_time", 240)))
+                            unit.anim_state = "corpse"
+                            self._emit_event({"type": "corpse", "x": unit.pos_x, "team": unit.team, "name": unit.name})
+                            continue
+
+                        self._emit_event({
+                            "type": "death", "x": unit.pos_x, "team": unit.team, "name": unit.name
+                        })
+                        self.units[team][slot] = None
+                    continue
+
+                # Fallback: if unit has hp <= 0 but not yet marked dying (e.g. direct assignment in test)
                 if unit.is_alive and unit.hp <= 0:
                     unit.hp = 0
                     unit.is_alive = False
+                    unit.is_dying = True
                     unit.freeze_timer = 0
                     unit.slow_timer = 0
                     unit.curse_timer = 0
-
-                    # Check zombie revive
-                    if getattr(unit, "revive_left", 0) > 0 and not getattr(unit, "killed_by_zombie_killer", False):
-                        unit.revive_left -= 1
-                        unit.is_corpse = True
-                        unit.corpse_timer = max(1, int(unit.abilities.get("revive_time", 240)))
-                        unit.anim_state = "corpse"
-                        self._emit_event({"type": "corpse", "x": unit.pos_x, "team": unit.team, "name": unit.name})
-                        continue
-
-                    # Authentic PONOS Battle_KillUnit (0x008b6f50): Unit dies on the spot, releases soul,
-                    # awards money, and slot is immediately cleared.
-                    if getattr(unit, "is_boss", False) and not getattr(unit, "boss_death_triggered", False):
-                        unit.boss_death_triggered = True
-                        self.slow_motion_timer = 45
-                        self._emit_event({
-                            "type": "boss_death",
-                            "x": unit.pos_x,
-                            "team": unit.team,
-                            "name": unit.name,
-                            "boss_name": unit.name
-                        })
-                    # Award money drop to the opposing team's wallet (scaled by Accounting treasure & extra_money)
-                    if opp_team in self.wallets and unit.money_drop > 0:
+                    self._knockback(unit, "hitback")
+                    self._emit_event({
+                        "type": "knockback", "x": unit.pos_x, "radius": unit.radius, "team": unit.team, "kind": "hitback"
+                    })
+                    if opp_team in self.wallets and unit.money_drop > 0 and not getattr(unit, "bounty_awarded", False):
+                        unit.bounty_awarded = True
                         bounty = int(unit.money_drop * self.wallet_multipliers.get(opp_team, 1.0))
                         if getattr(unit, "killed_with_extra_money", False):
                             bounty *= 2
                         self.wallets[opp_team].add_money(bounty)
-
-                    self._emit_event({
-                        "type": "death", "x": unit.pos_x, "team": unit.team, "name": unit.name
-                    })
-                    self.units[team][slot] = None
+                    if getattr(unit, "is_boss", False) and not getattr(unit, "boss_death_triggered", False):
+                        unit.boss_death_triggered = True
+                        self.slow_motion_timer = 45
+                        self._emit_event({
+                            "type": "boss_death", "x": unit.pos_x, "team": unit.team, "name": unit.name, "boss_name": unit.name
+                        })
 
         cat_castle = self.get_castle(TEAM_CAT)
         enemy_castle = self.get_castle(TEAM_ENEMY)

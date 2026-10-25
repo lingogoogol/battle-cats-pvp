@@ -154,22 +154,25 @@ class TestBattleCatsAuthenticParity(unittest.TestCase):
         self.assertFalse(doge.is_in_knockback())
         self.assertAlmostEqual(init_x - doge.pos_x, 48.0, places=2)
 
-    def test_06_instant_death_on_spot(self):
-        """Verifies Battle_KillUnit (0x008b6f50): unit at 0 HP dies on the spot with ZERO knockback sliding."""
+    def test_06_death_knockback_then_soul_parity(self):
+        """Verifies authentic Battle Cats death: unit performs death knockback before releasing soul."""
         sim = BattleSimulation(stage_config={"length": 3200, "enemy_castle_hp": 1000, "cat_castle_hp": 1000})
         doge = sim.spawn_custom_unit({"name": "Doge", "hp": 100, "knockback_count": 3, "speed": 0}, team=TEAM_ENEMY)
         doge.pos_x = 1000.0
 
-        # Kill doge with lethal damage
         attacker = sim.spawn_custom_unit({"name": "Attacker", "hp": 1000, "speed": 0, "attack_power": 150}, team=TEAM_CAT)
         sim._apply_damage(attacker, doge, direction=-1, hit_damage=150)
         self.assertEqual(doge.hp, 0)
+        self.assertTrue(doge.is_dying)
+        self.assertTrue(doge.is_in_knockback())
+        self.assertEqual(doge.knockback_timer, 12)
 
-        # Step simulation: unit must be immediately cleared from slot, NO 11-frame knockback retreat!
-        sim.step()
-        self.assertIsNone(sim.units[TEAM_ENEMY][1], "Dead unit must be cleared on the spot without death sliding!")
+        for _ in range(12):
+            sim.step()
+
+        self.assertIsNone(sim.units[TEAM_ENEMY][1], "Dead unit must be cleared after death knockback completes")
         ev_types = [ev["type"] for ev in sim.consume_visual_events()]
-        self.assertIn("death", ev_types, "Death event must be emitted at exact position")
+        self.assertIn("death", ev_types, "Death event must be emitted at end of death knockback")
 
     def test_07_knockback_attack_interrupt_and_rebound(self):
         """Verifies that knockback interrupts attack windup and resets cycle_timer so unit can attack immediately."""

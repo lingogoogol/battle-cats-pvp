@@ -99,8 +99,9 @@ class TestPlayableBattle(unittest.TestCase):
 
         # Kill doge
         doge.hp = 0
-        self.sim.step()
-        # Unit reaches 0 HP, dies on the spot, and is cleaned from the slot
+        for _ in range(13):
+            self.sim.step()
+        # Unit reaches 0 HP, completes death knockback, and is cleaned from the slot
         self.assertIsNone(self.sim.units[TEAM_ENEMY][1], "Dead unit was not cleared from slot upon death")
 
     def test_06_can_attack_castle(self):
