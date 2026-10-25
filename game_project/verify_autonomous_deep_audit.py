@@ -325,6 +325,60 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertFalse(immune_doge.is_in_knockback(), "Wave immune unit must NOT be knocked back by normal cannon")
         print(" -> Normal Cannon Wave Immunity Parity verified: 0 damage and 0 knockback.")
 
+    def test_11_worker_cat_economy_continuous_accumulator(self):
+        """Verifies authentic Battle Cats Worker Cat economy:
+        - 46.125 cents/sec baseline, scaled to 184.5 cents/sec with 3-chapter Kyushu (4.0x)
+        - +5% income scaling per in-battle Worker Cat level
+        - Sub-cent floating accumulator prevents discrete step truncation
+        - Official upgrade costs [100, 200, 400, 800, 1500, 2500, 4000]
+        - Official capacities [500..7000] + Shikoku treasure bonus (+3000)
+        """
+        from game_project.simulation.wallet import WorkerCatWallet
+
+        # 1. Baseline without treasures (1.0x multiplier)
+        w_raw = WorkerCatWallet(initial_money=0)
+        w_raw.set_treasure_bonuses(rate_mult=1.0, cap_bonus=0)
+        self.assertEqual(w_raw.max_money, 500)
+        self.assertAlmostEqual(w_raw.rate_per_tick_float, 46.125 / 30.0, places=4)
+        for _ in range(30): # 1 second (30 frames)
+            w_raw.update()
+        self.assertEqual(w_raw.money, 46, "1 second of raw Lv 1 income must produce 46 cents")
+
+        # 2. Empire of Cats 3-Chapter Kyushu Treasure (4.0x multiplier)
+        w_eoc = WorkerCatWallet(initial_money=0)
+        w_eoc.set_treasure_bonuses(rate_mult=4.0, cap_bonus=3000)
+        self.assertEqual(w_eoc.max_money, 3500) # 500 + 3000
+        self.assertAlmostEqual(w_eoc.rate_per_tick_float, 6.15, places=4) # 184.5 / 30 = 6.15 cents/frame
+        for _ in range(30):
+            w_eoc.update()
+        self.assertEqual(w_eoc.money, 184, "1 second of EoC 3-chapter Lv 1 income must produce 184 cents (184.5 cents/s)")
+
+        # 3. Upgrade to Lv 2 (+5% income: 193.725 cents/s -> 6.4575 cents/frame)
+        self.assertEqual(w_eoc.upgrade_cost, 100)
+        w_eoc.money = 200
+        success = w_eoc.upgrade_worker()
+        self.assertTrue(success)
+        self.assertEqual(w_eoc.level, 2)
+        self.assertEqual(w_eoc.money, 100) # 200 - 100 = 100
+        self.assertEqual(w_eoc.max_money, 3800) # 800 base + 3000 treasure
+        self.assertAlmostEqual(w_eoc.rate_per_tick_float, 193.725 / 30.0, places=4)
+
+        # 4. Progressively test all upgrade levels up to Lv 8
+        expected_costs = [200, 400, 800, 1500, 2500, 4000]
+        expected_caps = [4200, 4800, 5600, 6600, 8000, 10000]
+        for cost, cap in zip(expected_costs, expected_caps):
+            self.assertEqual(w_eoc.upgrade_cost, cost)
+            w_eoc.money += cost
+            self.assertTrue(w_eoc.upgrade_worker())
+            self.assertEqual(w_eoc.max_money, cap)
+
+        self.assertEqual(w_eoc.level, 8)
+        self.assertIsNone(w_eoc.upgrade_cost)
+        self.assertFalse(w_eoc.upgrade_worker(), "Lv 8 is max level")
+        # Lv 8 rate = 184.5 * (1 + 0.05 * 7) = 184.5 * 1.35 = 249.075 cents/s
+        self.assertAlmostEqual(w_eoc.rate_per_tick_float, 249.075 / 30.0, places=4)
+        print(" -> Worker Cat Economy Parity verified: continuous sub-cent accumulator, 184.5c/s base, +5%/lv, and official caps.")
+
 
 if __name__ == "__main__":
     suite = unittest.TestLoader().loadTestsFromTestCase(TestAutonomousParityDeepAudit)
