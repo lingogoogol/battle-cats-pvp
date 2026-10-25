@@ -247,6 +247,53 @@ class BattleRoom:
                 self.frame_cond.notify_all()
             return res
 
+    def _update_ai(self):
+        """Tactical Battle Cats PvP AI with frontline distance and threat assessment."""
+        w2 = self.sim.p2_wallet
+        d2 = self.sim.deployers[TEAM_ENEMY]
+        my_castle_x = self.sim.get_castle(TEAM_ENEMY).pos_x  # 120
+
+        # 1. Frontline threat assessment
+        opp_units = [u for u in self.sim.units[TEAM_CAT] if u is not None and u.is_alive and not getattr(u, 'is_burrowing', False)]
+        closest_opp_x = min([u.pos_x for u in opp_units]) if opp_units else self.sim.battlefield_length
+        threat_dist = closest_opp_x - my_castle_x  # Distance of closest enemy from our castle (120)
+
+        # 2. Strategic Cat Cannon: fire when charged and enemies are within range
+        if self.sim.p2_cannon_charge >= self.sim.cannon_max_charge:
+            c_range = self.sim.cannon_ranges.get(TEAM_ENEMY, self.sim.cannon_range)
+            enemies_in_cannon_range = [u for u in opp_units if u.pos_x <= (my_castle_x + c_range)]
+            if enemies_in_cannon_range:
+                # Fire if enemies threaten castle (< 700 DU), or cluster >= 2, or every 120 frames
+                if threat_dist < 700 or len(enemies_in_cannon_range) >= 2 or self.sim.current_frame % 120 == 0:
+                    self.sim.fire_cannon(TEAM_ENEMY)
+
+        # 3. Worker Cat Economy investment: upgrade if frontline is safe or economy is strong
+        if w2.level < 8 and w2.upgrade_cost is not None and w2.money >= w2.upgrade_cost:
+            if threat_dist > 1000 or w2.money > (w2.upgrade_cost + 400):
+                if self.sim.current_frame % 30 == 0:
+                    w2.upgrade_worker()
+
+        # 4. Tactical Deployment: Meatshields vs Heavy Attackers
+        # Evaluates every 10 frames (~0.33s reaction window)
+        if self.sim.current_frame % 10 == 0:
+            affordable = [i for i in range(len(d2.deck_keys)) if d2.can_deploy(i, w2.money, has_free_slot=True)]
+            if affordable:
+                slot_costs = {i: (d2.get_slot_info(i) or {}).get("cost", 100) for i in affordable}
+                meatshields = [i for i in affordable if slot_costs[i] <= 150]
+                attackers = [i for i in affordable if slot_costs[i] > 150]
+
+                if threat_dist < 800 and meatshields:
+                    # Under pressure: prioritize cheap meatshield frontline
+                    self.sim.deploy_unit(TEAM_ENEMY, random.choice(meatshields))
+                elif attackers and (w2.money > 800 or threat_dist >= 800):
+                    # Safe / well-funded: deploy highest-cost heavy attacker
+                    attackers.sort(key=lambda i: slot_costs[i], reverse=True)
+                    self.sim.deploy_unit(TEAM_ENEMY, attackers[0])
+                elif meatshields:
+                    self.sim.deploy_unit(TEAM_ENEMY, random.choice(meatshields))
+                else:
+                    self.sim.deploy_unit(TEAM_ENEMY, random.choice(affordable))
+
     def step_frame(self):
         with self.lock:
             if self.status != "PLAYING" or self.sim is None or self.sim.game_over:
@@ -260,19 +307,9 @@ class BattleRoom:
             for _ in range(steps_to_run):
                 if self.sim.game_over:
                     break
-                # If vs_ai, let AI control Team 1 (Left Castle) at a natural human-like pace
+                # If vs_ai, let AI control Team 1 (Left Castle) with frontline threat assessment
                 if self.vs_ai:
-                    w2 = self.sim.p2_wallet
-                    if w2.level < 5 and w2.money >= (w2.upgrade_cost or 99999) and self.sim.current_frame % 240 == 0:
-                        w2.upgrade_worker()
-                    if self.sim.current_frame % 150 == 0:
-                        d2 = self.sim.deployers[TEAM_ENEMY]
-                        affordable = [i for i in range(len(d2.deck_keys)) if d2.can_deploy(i, w2.money, has_free_slot=True)]
-                        if affordable:
-                            pick = random.choice(affordable)
-                            self.sim.deploy_unit(TEAM_ENEMY, pick)
-                    if self.sim.p2_cannon_charge >= self.sim.cannon_max_charge and self.sim.current_frame % 210 == 0:
-                        self.sim.fire_cannon(TEAM_ENEMY)
+                    self._update_ai()
 
                 self.sim.step()
                 evs = self.sim.consume_visual_events()

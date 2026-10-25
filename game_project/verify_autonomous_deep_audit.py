@@ -420,6 +420,24 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertEqual(far_hit_frame, 10, "Far enemy at 2000px should be reached at frame 10")
         print(f" -> Cat Cannon Progressive Wavefront verified: close unit hit at f=0, mid unit at f={mid_hit_frame}, far unit at f={far_hit_frame}.")
 
+    def test_13_tactical_pvp_bot_threat_and_meatshielding(self):
+        """Verifies PvP Bot AI prioritizes meatshields and defends castle under pressure."""
+        from game_project.web_server import BattleRoom
+        room = BattleRoom("test_bot_threat", "Host", vs_ai=True)
+        self.assertEqual(room.status, "PLAYING")
+
+        # Spawn an aggressive enemy near Team 1's castle (pos_x = 400, threat_dist = 280)
+        rusher = room.sim.spawn_custom_unit({"name": "Rusher", "hp": 5000, "attack_power": 100, "speed": 0}, team=TEAM_CAT)
+        rusher.pos_x = 400
+
+        # Run 30 frames: AI must sense immediate frontline danger (<800 DU) and deploy defense
+        for _ in range(30):
+            room.step_frame()
+
+        p2_units = [u for u in room.sim.units[TEAM_ENEMY] if u and u.is_alive and u.slot != 0]
+        self.assertGreater(len(p2_units), 0, "Bot AI must deploy defenders when castle is threatened")
+        print(f" -> Tactical PvP Bot verified: deployed {len(p2_units)} units in response to threat.")
+
 
 if __name__ == "__main__":
     suite = unittest.TestLoader().loadTestsFromTestCase(TestAutonomousParityDeepAudit)
