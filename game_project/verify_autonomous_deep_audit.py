@@ -379,6 +379,47 @@ class TestAutonomousParityDeepAudit(unittest.TestCase):
         self.assertAlmostEqual(w_eoc.rate_per_tick_float, 249.075 / 30.0, places=4)
         print(" -> Worker Cat Economy Parity verified: continuous sub-cent accumulator, 184.5c/s base, +5%/lv, and official caps.")
 
+    def test_12_cat_cannon_progressive_wavefront_sweep(self):
+        """Verifies progressive Cat Cannon wavefront propagation:
+        - Units close to castle (e.g. 80px) are hit on Frame 0 muzzle burst.
+        - Units far from castle (e.g. 500px) are NOT hit on Frame 0.
+        - Far units are hit sequentially as the 14-frame progressive wavefront reaches their position.
+        """
+        sim = BattleSimulation(cannon_type="normal")
+        sim.cannon_charge = sim.cannon_max_charge
+        c_x = sim.get_castle(TEAM_CAT).pos_x
+
+        # Spawn close enemy (c_x - 80), mid enemy (c_x - 500), and far enemy (c_x - 2000)
+        close_doge = sim.spawn_custom_unit({"name": "Close Doge", "hp": 1000, "speed": 0}, team=TEAM_ENEMY)
+        close_doge.pos_x = c_x - 80
+        mid_doge = sim.spawn_custom_unit({"name": "Mid Doge", "hp": 1000, "speed": 0}, team=TEAM_ENEMY)
+        mid_doge.pos_x = c_x - 500
+        far_doge = sim.spawn_custom_unit({"name": "Far Doge", "hp": 1000, "speed": 0}, team=TEAM_ENEMY)
+        far_doge.pos_x = c_x - 2000
+
+        # Fire cannon
+        sim.fire_cannon(TEAM_CAT)
+
+        # Frame 0 check: close enemy is hit immediately; mid and far enemies are untouched
+        self.assertTrue(close_doge.is_in_knockback(), "Close enemy must be hit on Frame 0 muzzle blast")
+        self.assertFalse(mid_doge.is_in_knockback(), "Mid enemy must NOT be hit instantaneously on Frame 0")
+        self.assertFalse(far_doge.is_in_knockback(), "Far enemy must NOT be hit instantaneously on Frame 0")
+        self.assertEqual(far_doge.hp, 1000, "Far enemy took no damage on Frame 0")
+
+        # Step simulation forward: mid enemy should be hit at frame 3, far enemy at frame 10
+        mid_hit_frame = None
+        far_hit_frame = None
+        for f in range(1, 15):
+            sim.step()
+            if mid_hit_frame is None and mid_doge.is_in_knockback():
+                mid_hit_frame = f
+            if far_hit_frame is None and far_doge.is_in_knockback():
+                far_hit_frame = f
+
+        self.assertEqual(mid_hit_frame, 3, "Mid enemy at 500px should be reached at frame 3")
+        self.assertEqual(far_hit_frame, 10, "Far enemy at 2000px should be reached at frame 10")
+        print(f" -> Cat Cannon Progressive Wavefront verified: close unit hit at f=0, mid unit at f={mid_hit_frame}, far unit at f={far_hit_frame}.")
+
 
 if __name__ == "__main__":
     suite = unittest.TestLoader().loadTestsFromTestCase(TestAutonomousParityDeepAudit)

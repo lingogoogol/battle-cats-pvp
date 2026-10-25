@@ -529,11 +529,18 @@ class BattleSimulation:
             return True
 
         # Standard / Slow / Waterblast / Breakerblast / Curseblast sweeping beams
+        # Progressive wavefront model:
+        # Initial frame 0 hits units within the muzzle blast reach (~120px)
+        dist = abs(beam_end_x - beam_start_x)
+        init_reach_x = beam_start_x + direction * min(dist, 120.0)
+        curr_min_x = min(beam_start_x, init_reach_x)
+        curr_max_x = max(beam_start_x, init_reach_x)
+
         hit_ids = set()
         hit_count = 0
         for slot in range(1, MAX_UNITS_PER_TEAM):
             u = self.units[opp_team][slot]
-            if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and min_x <= u.pos_x <= max_x:
+            if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and curr_min_x <= u.pos_x <= curr_max_x:
                 self._cannon_hit(u, opp_team, ctype=ctype)
                 hit_ids.add(id(u))
                 hit_count += 1
@@ -541,13 +548,17 @@ class BattleSimulation:
         self.active_cannon_waves.append({
             "team": team,
             "opp_team": opp_team,
+            "direction": direction,
             "cannon_type": ctype,
             "start_x": beam_start_x,
             "end_x": beam_end_x,
+            "dist": dist,
             "min_x": min_x,
             "max_x": max_x,
             "timer": 20,
             "max_timer": 20,
+            "elapsed": 0,
+            "prev_reach_x": init_reach_x,
             "hit_ids": hit_ids,
         })
 
@@ -861,18 +872,24 @@ class BattleSimulation:
             if self.cannon_anim_timer.get(t_id, 0) > 0:
                 self.cannon_anim_timer[t_id] -= 1
 
-        # Update active sweeping Cat Cannon shockwaves
+        # Update active sweeping Cat Cannon shockwaves with progressive wavefront
         remaining_waves = []
         for cw in self.active_cannon_waves:
             cw["timer"] -= 1
+            cw["elapsed"] = cw.get("elapsed", 0) + 1
             if cw["timer"] > 0:
                 opp_t = cw["opp_team"]
-                min_x, max_x = cw["min_x"], cw["max_x"]
+                # Sweeping wavefront advances across 14 frames matching visual pillars
+                progress = min(1.0, cw["elapsed"] / 14.0)
+                current_reach_x = cw["start_x"] + cw["direction"] * (cw["dist"] * progress)
+                span_min_x = min(cw["start_x"], current_reach_x)
+                span_max_x = max(cw["start_x"], current_reach_x)
                 for slot in range(1, MAX_UNITS_PER_TEAM):
                     u = self.units[opp_t][slot]
-                    if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and id(u) not in cw["hit_ids"] and min_x <= u.pos_x <= max_x:
+                    if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and id(u) not in cw["hit_ids"] and span_min_x <= u.pos_x <= span_max_x:
                         self._cannon_hit(u, opp_t, ctype=cw.get("cannon_type", "normal"))
                         cw["hit_ids"].add(id(u))
+                cw["prev_reach_x"] = current_reach_x
                 remaining_waves.append(cw)
         self.active_cannon_waves = remaining_waves
 
