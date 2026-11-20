@@ -2,7 +2,7 @@
 Autonomous Deep Verification Script: Battle Cats REA Cooldown and Knockback Parity.
 Verifies:
 1. Strict 60-frame hard floor on Cat Production Cooldown (no infinite conga-line spam).
-2. Authentic PONOS & BCU knockback parameters (hitback: 165 DU / 24f, kb: 165 DU / 11f, cannon: 55 DU / 11f, boss: 735 DU / 47f).
+2. Authentic PONOS & BCU knockback parameters (hitback: 345 DU / 24f, kb: 165 DU / 12f, cannon: 55 DU / 11f, boss: 705 DU / 47f).
 3. Authentic quadratic ease-out deceleration physics (summing exactly to total displacement with smooth deceleration).
 4. Knockback invulnerability during all active frames.
 5. Immediate on-the-spot death sequence (Battle_KillUnit 0x008b6f50) with zero artificial death sliding.
@@ -76,14 +76,14 @@ class TestBattleCatsAuthenticParity(unittest.TestCase):
         self.assertEqual(sim.deployer.cooldowns[0], 150)
 
     def test_03_authentic_knockback_specs(self):
-        """Verifies official PONOS & BCU knockback specifications in KB_SPECS."""
-        self.assertEqual(KB_SPECS["hitback"], (86.0, 24), "HP hitback must be 86.0 px over 24 frames (~3.58 px/f)")
-        self.assertEqual(KB_SPECS["kb"], (48.0, 11), "Ability KB must be 48.0 px over 11 frames (4.364 px/f)")
-        self.assertEqual(KB_SPECS["cannon"], (25.0, 11), "Cannon KB must be 25.0 px over 11 frames (2.27 px/f)")
-        self.assertEqual(KB_SPECS["boss"], (180.0, 47), "Boss shockwave must be 180.0 px over 47 frames (~3.83 px/f)")
+        """Verifies native PONOS knockback specifications in KB_SPECS (DU = native / 4)."""
+        self.assertEqual(KB_SPECS["hitback"], (345.0, 24), "HP hitback must be 345.0 DU over 24 frames (14.375 DU/f)")
+        self.assertEqual(KB_SPECS["kb"], (165.0, 12), "State 6 Ability KB must be 165.0 DU over 12 frames (660/4)")
+        self.assertEqual(KB_SPECS["cannon"], (55.0, 11), "Cannon KB must be 55.0 DU over 11 frames (220/4)")
+        self.assertEqual(KB_SPECS["boss"], (705.0, 47), "Boss shockwave must be 705.0 DU over 47 moving frames (2820/4)")
 
     def test_04_damage_hitback_physics_and_invulnerability(self):
-        """Verifies 86.0 px displacement over 24 frames with authentic constant-velocity displacement."""
+        """Verifies 345.0 DU displacement over 24 frames with authentic constant-velocity displacement."""
         sim = BattleSimulation(
             stage_config={"length": 3200, "enemy_castle_hp": 1000, "cat_castle_hp": 1000},
             deck=["cat"]
@@ -96,7 +96,7 @@ class TestBattleCatsAuthenticParity(unittest.TestCase):
             "speed": 0,
             "attack_power": 10
         }, team=TEAM_ENEMY)
-        doge.pos_x = 1000.0
+        doge.pos_x = 1200.0
 
         # Deal 110 damage to cross the first 100-HP threshold
         attacker = sim.spawn_custom_unit({
@@ -113,7 +113,7 @@ class TestBattleCatsAuthenticParity(unittest.TestCase):
         self.assertTrue(doge.is_in_knockback())
         self.assertEqual(doge.knockback_timer, 24)
         self.assertEqual(doge.kb_total_frames, 24)
-        self.assertEqual(doge.kb_distance, 86.0)
+        self.assertEqual(doge.kb_distance, 345.0)
 
         prev_x = doge.pos_x
         for f in range(24):
@@ -124,35 +124,36 @@ class TestBattleCatsAuthenticParity(unittest.TestCase):
 
             sim.step()
             dx = prev_x - doge.pos_x
-            # Authentic PONOS constant velocity: 86.0 / 24.0 = 3.5833 px/frame
-            self.assertAlmostEqual(dx, 86.0 / 24.0, places=4, msg=f"Displacement must be constant 86/24 px/f on frame {f}")
+            # Authentic PONOS constant velocity: 345.0 / 24.0 = 14.375 DU/frame
+            self.assertAlmostEqual(dx, 345.0 / 24.0, places=4, msg=f"Displacement must be 345/24 DU/f on frame {f}")
             prev_x = doge.pos_x
 
         # Knockback finished
         self.assertFalse(doge.is_in_knockback())
         total_disp = init_x - doge.pos_x
-        self.assertAlmostEqual(total_disp, 86.0, places=2, msg="Total displacement must equal exactly 86.0 px")
+        self.assertAlmostEqual(total_disp, 345.0, places=2, msg="Total displacement must equal exactly 345.0 DU")
 
     def test_05_ability_knockback_physics(self):
-        """Verifies Ability Proc knockback: 48.0 px over 11 frames with constant velocity (4.364 px/f)."""
+        """Verifies native State 6 Proc knockback (0x5dd600): 165.0 DU over 12 frames."""
         sim = BattleSimulation(stage_config={"length": 3200, "enemy_castle_hp": 1000, "cat_castle_hp": 1000})
         doge = sim.spawn_custom_unit({"name": "Doge", "hp": 1000, "knockback_count": 1, "speed": 0}, team=TEAM_ENEMY)
         doge.pos_x = 1000.0
 
         sim._knockback(doge, "kb")
         self.assertTrue(doge.is_in_knockback())
-        self.assertEqual(doge.knockback_timer, 11)
-        self.assertEqual(doge.kb_distance, 48.0)
+        self.assertEqual(doge.knockback_timer, 12)
+        self.assertEqual(doge.kb_distance, 165.0)
 
         init_x = doge.pos_x
-        for f in range(11):
+        for f in range(12):
             prev_x = doge.pos_x
             sim.step()
             dx = prev_x - doge.pos_x
-            self.assertAlmostEqual(dx, 48.0 / 11.0, places=4, msg=f"Ability KB must be constant 48/11 px/f on frame {f}")
+            expected_dx = (((12 - (f + 1)) % 12) * 10) / 4.0
+            self.assertAlmostEqual(dx, expected_dx, places=4, msg=f"State 6 Proc KB mismatch on frame {f}")
 
         self.assertFalse(doge.is_in_knockback())
-        self.assertAlmostEqual(init_x - doge.pos_x, 48.0, places=2)
+        self.assertAlmostEqual(init_x - doge.pos_x, 165.0, places=2)
 
     def test_06_death_knockback_then_soul_parity(self):
         """Verifies authentic Battle Cats death: unit performs death knockback before releasing soul."""

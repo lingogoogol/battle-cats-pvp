@@ -8,6 +8,18 @@
 const SCREEN_W = 1280;
 const SCREEN_H = 720;
 const GROUND_Y = 500;
+const BATTLE_WORLD_SCALE = 0.4 * (720.0 / 640.0); // 0.45 px/DU (native 0x5cf65c + 0x990658 1138x640 -> 720p uniform 9/8)
+const UNIT_RENDER_SCALE = 720.0 / 640.0;          // 1.125 (native 0x338cf4 + 0x33f0d8 uniform 9/8 scale for .mamodel)
+const CASTLE_NATIVE_SCALE = 1.27;                 // Native 0x4ae8dc..0x4aea14 Cat Castle multiplier (1.27x)
+const BATTLE_MAX_ZOOM_2ROW = 0.8897;              // Native 0x4ba6d4 2-row deck initial/max camera zoom (8897/10000)
+let battleZoom = BATTLE_MAX_ZOOM_2ROW;
+
+function getBattleZoomBounds(stageLen) {
+  const len = Math.max(800, stageLen || 3200);
+  // Native 0x8b296c..0x8b2984: min_zoom = (960000 // (stage_len * 4) + 1) / 100
+  const minZoom = Math.min(BATTLE_MAX_ZOOM_2ROW, Math.floor(960000 / (len * 4) + 1) / 100);
+  return { minZoom, maxZoom: BATTLE_MAX_ZOOM_2ROW };
+}
 const TEAM_CAT = 0;   // Right Castle (P1 Host)
 const TEAM_ENEMY = 1; // Left Castle (P2 Guest)
 
@@ -25,7 +37,7 @@ let eventSource = null;
 let pollTimer = null;
 
 // Camera & UI State
-let cameraX = 1200;
+let cameraX = 320;
 let isDraggingCam = false;
 let dragStartX = 0;
 let dragStartCamX = 0;
@@ -34,9 +46,131 @@ let activeRow = 0; // 0 = slots 0..4, 1 = slots 5..9
 let clientTick = 0;
 let previewFrame = 0;
 let selectedRarityFilter = "ALL";
+let rosterSearchQuery = "";
+let onlyTalentedFilter = false;
 let selectedCatLevel = 30;
 let inspectedItem = null;
 let formationPreviewAnim = "walk";
+const PENDING_RIGS = new Set();
+
+// Per-unit disabled talent indices: { unitKey: [idx, ...] } (absent/empty = ALL talents ON by default)
+let TALENT_OVERRIDES = {};
+try {
+  const savedOv = localStorage.getItem("bc_talent_overrides_v1");
+  if (savedOv) {
+    const parsed = JSON.parse(savedOv);
+    if (parsed && typeof parsed === "object") TALENT_OVERRIDES = parsed;
+  }
+} catch (_) {}
+
+function saveTalentOverrides() {
+  try {
+    localStorage.setItem("bc_talent_overrides_v1", JSON.stringify(TALENT_OVERRIDES));
+  } catch (_) {}
+}
+
+function getDisabledTalentSet(unitKey) {
+  const arr = TALENT_OVERRIDES[unitKey];
+  return new Set(Array.isArray(arr) ? arr.map(Number) : []);
+}
+
+function toggleUnitTalent(unitKey, talentIdx, enabled) {
+  const dis = getDisabledTalentSet(unitKey);
+  if (enabled) dis.delete(Number(talentIdx));
+  else dis.add(Number(talentIdx));
+  if (dis.size === 0) delete TALENT_OVERRIDES[unitKey];
+  else TALENT_OVERRIDES[unitKey] = Array.from(dis).sort((a, b) => a - b);
+  saveTalentOverrides();
+  renderDeckSelector();
+  const updated = getAllSelectableUnits().find(x => x.key === unitKey);
+  if (updated) inspectCat(updated);
+  if (currentRoomCode) {
+    sendRoomAction("UPDATE_TALENTS", TALENT_OVERRIDES);
+  }
+}
+
+function setAllUnitTalents(unitKey, enableAll) {
+  const raw = BASE_CATS.find(c => c.key === unitKey);
+  if (!raw || !Array.isArray(raw.talents) || raw.talents.length === 0) return;
+  if (enableAll) {
+    delete TALENT_OVERRIDES[unitKey];
+  } else {
+    TALENT_OVERRIDES[unitKey] = raw.talents.map(t => Number(t.idx));
+  }
+  saveTalentOverrides();
+  renderDeckSelector();
+  const updated = getAllSelectableUnits().find(x => x.key === unitKey);
+  if (updated) inspectCat(updated);
+  if (currentRoomCode) {
+    sendRoomAction("UPDATE_TALENTS", TALENT_OVERRIDES);
+  }
+  showToast(enableAll ? `已開啟「${raw.name}」全部本能！` : `已關閉「${raw.name}」全部本能！`);
+}
+
+function onOnlyTalentedChange(checked) {
+  onlyTalentedFilter = !!checked;
+  renderDeckSelector();
+}
+
+let _lastComboDeckKey = "";
+async function refreshActiveCombos() {
+  const bar = document.getElementById("activeCombosBar");
+  if (!bar) return;
+  const key = SELECTED_DECK.slice(0, 10).join(",");
+  if (key === _lastComboDeckKey) return;
+  _lastComboDeckKey = key;
+  try {
+    const res = await fetch("/api/check_combos", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deck: SELECTED_DECK.slice(0, 10) }),
+    });
+    const data = await res.json();
+    const combos = (data && data.combos) || [];
+    if (combos.length === 0) {
+      bar.innerHTML = `<span style="color:#6c7e9e;font-size:11px;">目前編隊未觸發貓咪聯組（可搭配同系列角色觸發）</span>`;
+    } else {
+      bar.innerHTML = combos.map(c =>
+        `<span style="display:inline-block;background:rgba(245,185,21,0.16);border:1px solid rgba(245,185,21,0.45);color:#ffe066;font-size:11px;font-weight:800;padding:2px 8px;border-radius:6px;margin-right:6px;">🌟 ${c.name} [${c.size}]</span>`
+      ).join("");
+    }
+  } catch (_) {}
+}
+
+function ensureRigLoaded(rigCode) {
+  if (!rigCode || RIGS[rigCode] || PENDING_RIGS.has(rigCode)) return;
+  ensureRigsLoaded([rigCode]);
+}
+
+function ensureRigsLoaded(codes) {
+  const missing = [];
+  for (const c of codes) {
+    if (c && !RIGS[c] && !PENDING_RIGS.has(c)) {
+      PENDING_RIGS.add(c);
+      missing.push(c);
+    }
+  }
+  if (missing.length === 0) return;
+  fetch(`/api/rig?codes=${encodeURIComponent(missing.join(","))}`)
+    .then(r => (r.ok ? r.json() : null))
+    .then(data => {
+      if (data && data.rigs) {
+        Object.entries(data.rigs).forEach(([code, rig]) => {
+          RIGS[code] = rig;
+          if (rig && rig.png) loadImage(`rig_${rig.code}`, rig.png);
+        });
+      }
+    })
+    .catch(() => {})
+    .finally(() => {
+      missing.forEach(c => PENDING_RIGS.delete(c));
+    });
+}
+
+function onRosterSearchChange(val) {
+  rosterSearchQuery = (val || "").trim().toLowerCase();
+  renderDeckSelector();
+}
 
 // Active Visual FX on Client Canvas
 let fxHitSparks = [];
@@ -47,6 +181,7 @@ let fxCannonBeams = [];
 let fxFloatingTexts = [];
 let fxWaves = [];
 let fxSurges = [];
+let fxExplosions = [];
 let fxWaveBlocks = [];
 let fxBossShockwaves = [];
 let fxToxic = [];
@@ -175,6 +310,9 @@ function switchTab(tabName) {
   if (tabName === "lobby") {
     document.getElementById("tabLobbyBtn").classList.add("active");
     refreshRoomList();
+  } else if (tabName === "formation") {
+    document.getElementById("tabFormationBtn").classList.add("active");
+    renderDeckSelector();
   } else if (tabName === "battle") {
     document.getElementById("tabBattleBtn").classList.add("active");
   } else if (tabName === "studio") {
@@ -196,14 +334,14 @@ async function initApp() {
     BASE_CATS = data.base_cats || [];
     CUSTOM_UNITS = data.custom_units || [];
 
-    // Preload all rig sprite sheets & official unit portrait icons
+    // Preload only essential FX + starter deck sprite sheets & current deck icons (avoid flooding 779 icon requests on remote links!)
     Object.values(RIGS).forEach(r => {
-      loadImage(`rig_${r.code}`, r.png);
+      if (r && r.png) loadImage(`rig_${r.code}`, r.png);
     });
-    BASE_CATS.forEach(c => {
-      if (c.icon) {
-        loadImage(`icon_${c.icon}`, `/assets/${c.icon}.png`);
-      }
+    const catByKey = new Map(BASE_CATS.map(c => [c.key, c]));
+    myDeck.forEach(k => {
+      const c = catByKey.get(k);
+      if (c && c.icon) loadImage(`icon_${c.icon}`, `/assets/${c.icon}.png`);
     });
 
     // Populate Studio Rig Selector with all 38 official cat rigs + enemy rigs
@@ -226,10 +364,16 @@ async function initApp() {
     const urlEl = document.getElementById("shareUrlBox");
     if (urlEl) urlEl.textContent = shareUrl;
 
-    // Initialize balanced multi-rarity 10-slot default deck (Meatshields + Rare/SR/EX/Uber/Legend)
+    // Update dynamic roster title with total restored official final-form count
+    const titleEl = document.getElementById("rosterPanelTitle");
+    if (titleEl) {
+      titleEl.textContent = `開戰前配隊選角（涵蓋 6 大稀有度 ${BASE_CATS.length} 隻最終進化型官方貓咪 ＋ 自製角色）`;
+    }
+
+    // Initialize balanced multi-rarity 10-slot default deck (Final-form Meatshields + EX/Rare/SR/Uber/Legend)
     const defaultKeys = [
-      "cat", "tank_cat", "rare_pogo", "rare_salon", "sr_swimmer",
-      "sr_kotatsu", "ex_bahamut", "uber_balrog", "uber_hanzo", "legend_momoco",
+      "cat_000_s", "cat_001_s", "cat_018_s", "cat_037_s", "cat_041_s",
+      "cat_032_s", "cat_031_s", "cat_024_s", "cat_025_s", "cat_455_s",
     ];
     SELECTED_DECK = [];
     defaultKeys.forEach(k => {
@@ -274,8 +418,29 @@ async function initApp() {
   }
 }
 
-function getLevelScaleFactor(level = selectedCatLevel) {
-  return 1.0 + 0.2 * (Math.max(1, level) - 1);
+function getLevelScaleFactor(level = selectedCatLevel, brackets = null) {
+  const lv = Math.max(1, parseInt(level, 10) || 1);
+  if (lv === 1) return 1.0;
+  const b = Array.isArray(brackets) && brackets.length > 0 ? brackets : [20, 20, 20, 20, 20, 20, 10, 10, 10, 10];
+  let totalPct = 100;
+  for (let i = 1; i < lv; i++) {
+    const idx = Math.min(b.length - 1, Math.floor(i / 10));
+    totalPct += b[idx];
+  }
+  return totalPct / 100.0;
+}
+
+function computeScaledStat(baseVal, level = selectedCatLevel, brackets = null) {
+  const lv = Math.max(1, parseInt(level, 10) || 1);
+  const base = parseInt(baseVal, 10) || 0;
+  if (lv === 1) return Math.max(1, base);
+  const b = Array.isArray(brackets) && brackets.length > 0 ? brackets : [20, 20, 20, 20, 20, 20, 10, 10, 10, 10];
+  let totalX100 = base * 100;
+  for (let i = 1; i < lv; i++) {
+    const idx = Math.min(b.length - 1, Math.floor(i / 10));
+    totalX100 += base * b[idx];
+  }
+  return Math.max(1, Math.floor((totalX100 + 50) / 100));
 }
 
 function changeCatLevel(val) {
@@ -290,29 +455,146 @@ function changeCatLevel(val) {
     sendRoomAction("SET_LEVEL", selectedCatLevel);
   }
   const mult = getLevelScaleFactor(selectedCatLevel).toFixed(1);
-  showToast(`已切換貓咪等級為 Lv.${selectedCatLevel} (${mult}x 官方成長公式)`);
+  showToast(`已切換貓咪等級為 Lv.${selectedCatLevel} (unitlevel.csv ${mult}x 官方成長公式)`);
+}
+
+function formatMaxLevelLabel(item) {
+  if (item.custom) return "Lv.MAX";
+  const baseLv = item.max_base_level || item.max_level || 50;
+  const plusLv = item.max_plus_level || 0;
+  return plusLv > 0 ? `Lv.${baseLv}+${plusLv}` : `Lv.${baseLv}`;
+}
+
+function applyTalentsToClientItem(item) {
+  const talents = item.talents;
+  if (!Array.isArray(talents) || talents.length === 0) return item;
+  const dis = getDisabledTalentSet(item.key);
+  const ab = { ...(item.abilities || {}) };
+  const targetTraits = [...(item.target_traits || [])];
+  const hits = (item.attack_hits || []).map(h => ({ ...h }));
+  const traitMap = {
+    33: "red", 34: "floating", 35: "black", 36: "metal", 37: "angel",
+    38: "alien", 39: "zombie", 40: "relic", 41: "traitless", 57: "aku",
+  };
+  let hpBonusPct = 0;
+  let atkBonusPct = 0;
+  let cost = item.cost;
+  let cdFrames = item.cd_frames;
+  let speed = item.speed;
+  let tba = item.tba;
+  let enabledCount = 0;
+
+  for (const t of talents) {
+    if (dis.has(Number(t.idx))) continue;
+    enabledCount++;
+    const aid = Number(t.ability_id || 0);
+    const mv = t.max_vals || [0, 0, 0, 0];
+    const m1 = mv[0] || 0, m2 = mv[1] || 0, m3 = mv[2] || 0, m4 = mv[3] || 0;
+    if (aid === 32) hpBonusPct += m1;
+    else if (aid === 31) atkBonusPct += m1;
+    else if (aid === 25) cost = Math.max(10, cost - m1);
+    else if (aid === 26) cdFrames = Math.max(60, cdFrames - m1 * 2);
+    else if (aid === 27) speed = Math.max(1, speed + m1);
+    else if (aid === 61) tba = Math.max(0, tba - m1);
+    else if (traitMap[aid]) { if (!targetTraits.includes(traitMap[aid])) targetTraits.push(traitMap[aid]); }
+    else if (aid === 1) { ab.weaken_prob = Math.min(100, (ab.weaken_prob || 0) + m1); ab.weaken_dur = (ab.weaken_dur || 0) + m2; }
+    else if (aid === 2) { ab.freeze_prob = Math.min(100, (ab.freeze_prob || 0) + m1); ab.freeze_dur = (ab.freeze_dur || 0) + m2; }
+    else if (aid === 3) { ab.slow_prob = Math.min(100, (ab.slow_prob || 0) + m1); ab.slow_dur = (ab.slow_dur || 0) + m2; }
+    else if (aid === 5) ab.strong = true;
+    else if (aid === 6) ab.resistant = true;
+    else if (aid === 7) ab.massive_damage = true;
+    else if (aid === 8) ab.kb_prob = Math.min(100, (ab.kb_prob || 0) + m1);
+    else if (aid === 10) {
+      if (m1 > 0 && !ab.strengthen_hp_pct) ab.strengthen_hp_pct = m1 < 100 ? (100 - m1) : m1;
+      ab.strengthen_boost_pct = (ab.strengthen_boost_pct || 0) + m2;
+    }
+    else if (aid === 11) ab.survive_prob = Math.min(100, (ab.survive_prob || 0) + m1);
+    else if (aid === 13) ab.crit_prob = Math.min(100, (ab.crit_prob || 0) + m1);
+    else if (aid === 14) ab.zombie_killer = true;
+    else if (aid === 15) ab.barrier_break_prob = Math.min(100, (ab.barrier_break_prob || 0) + m1);
+    else if (aid === 16) ab.extra_money = true;
+    else if (aid === 17) { ab.wave_prob = Math.min(100, (ab.wave_prob || 0) + m1); ab.wave_lvl = Math.max(ab.wave_lvl || 0, Math.max(1, m2)); }
+    else if (aid === 29) ab.curse_immune = true;
+    else if (aid === 44) ab.weaken_immune = true;
+    else if (aid === 45) ab.freeze_immune = true;
+    else if (aid === 46) ab.slow_immune = true;
+    else if (aid === 47) ab.kb_immune = true;
+    else if (aid === 48) ab.wave_immune = true;
+    else if (aid === 49) { ab.warp_immune = true; ab.warp_blocker = true; }
+    else if (aid === 50) { ab.savage_blow_prob = Math.min(100, (ab.savage_blow_prob || 0) + m1); ab.savage_blow_boost = Math.max(ab.savage_blow_boost || 0, m2 || 200); }
+    else if (aid === 51) { ab.dodge_prob = Math.min(100, (ab.dodge_prob || 0) + m1); ab.dodge_dur = Math.max(ab.dodge_dur || 0, m2 || 30); }
+    else if (aid === 53) ab.toxic_immune = true;
+    else if (aid === 55) ab.surge_immune = true;
+    else if (aid === 56 || aid === 65) {
+      ab.surge_prob = Math.min(100, (ab.surge_prob || 0) + m1);
+      ab.surge_lvl = Math.max(ab.surge_lvl || 0, Math.max(1, m2));
+      if (aid === 65) ab.mini_surge = true;
+    }
+    else if (aid === 58) ab.shield_pierce_prob = Math.min(100, (ab.shield_pierce_prob || 0) + m1);
+    else if (aid === 59) ab.soul_strike = true;
+    else if (aid === 60) { ab.curse_prob = Math.min(100, (ab.curse_prob || 0) + m1); ab.curse_dur = (ab.curse_dur || 0) + m2; }
+    else if (aid === 62) { ab.wave_prob = Math.min(100, (ab.wave_prob || 0) + m1); ab.wave_lvl = Math.max(ab.wave_lvl || 0, Math.max(1, m2)); ab.mini_wave = true; }
+    else if (aid === 63) ab.colossus_slayer = true;
+    else if (aid === 64) ab.behemoth_slayer = true;
+    else if (aid === 66) ab.sage_slayer = true;
+    else if (aid === 67) { ab.explosion_prob = Math.min(100, (ab.explosion_prob || 0) + m1); if (m2 > 0) ab.explosion_start = Math.floor(m2 / 4); }
+    else if (aid === 68) ab.explosion_immune = true;
+    else if (aid === 69) ab.metal_killer_pct = Math.max(ab.metal_killer_pct || 0, m1 || 5);
+  }
+
+  let hp = item.hp;
+  let ap = item.ap;
+  if (hpBonusPct > 0) hp = Math.max(1, Math.floor((hp * (100 + hpBonusPct)) / 100));
+  if (atkBonusPct > 0) {
+    if (hits.length > 0) {
+      hits.forEach(h => { h.damage = Math.max(1, Math.floor((h.damage * (100 + atkBonusPct)) / 100)); });
+      ap = hits.reduce((acc, h) => acc + h.damage, 0);
+    } else {
+      ap = Math.max(1, Math.floor((ap * (100 + atkBonusPct)) / 100));
+    }
+  }
+  return {
+    ...item,
+    hp,
+    ap,
+    cost: Math.max(15, Math.round(cost * 1.5)),
+    cd_frames: cdFrames,
+    speed,
+    tba,
+    attack_hits: hits,
+    abilities: ab,
+    target_traits: targetTraits,
+    enabled_talent_count: enabledCount,
+  };
 }
 
 function getAllSelectableUnits() {
-  const lvScale = getLevelScaleFactor(selectedCatLevel);
   return [
     ...BASE_CATS.map(c => {
+      const brackets = c.level_brackets || null;
+      const maxLv = c.max_level || 50;
       const rawHits = Array.isArray(c.attack_hits) ? c.attack_hits : [];
       const scaledHits = rawHits.map(h => ({
         ...h,
-        damage: Math.max(1, Math.round((h.damage || 1) * lvScale)),
+        damage: computeScaledStat(h.damage || 1, maxLv, brackets),
       }));
-      const scaledAp = scaledHits.length > 0
+      const scaledAp = c.max_ap || (scaledHits.length > 0
         ? scaledHits.reduce((acc, h) => acc + h.damage, 0)
-        : Math.max(1, Math.round((c.ap || 100) * lvScale));
-      return {
+        : computeScaledStat(c.ap || 100, maxLv, brackets));
+      const scaledHp = c.max_hp || computeScaledStat(c.hp || 1000, maxLv, brackets);
+      const baseItem = {
         key: c.key,
         name: c.name,
         cost: c.cost,
         base_hp: c.hp || 1000,
         base_ap: c.ap || 100,
-        hp: Math.max(1, Math.round((c.hp || 1000) * lvScale)),
+        hp: scaledHp,
         ap: scaledAp,
+        max_level: maxLv,
+        max_base_level: c.max_base_level || maxLv,
+        max_plus_level: c.max_plus_level || 0,
+        form: c.form || "s",
+        form_label: c.form_label || "三階",
         attack_hits: scaledHits,
         range: c.range || 140,
         speed: c.speed || 10,
@@ -321,17 +603,21 @@ function getAllSelectableUnits() {
         tba: c.tba || 30,
         cd_frames: c.cd_frames || 60,
         is_area: !!c.is_area,
-        rig: c.rig || "000_f",
-        icon: c.icon || "uni000_f00",
+        rig: c.rig || "000_s",
+        icon: c.icon || "uni000_s00",
         rarity: c.rarity || "normal",
         rarity_label: c.rarity_label || "基本",
-        scale: c.scale || 0.62,
+        scale: c.scale || UNIT_RENDER_SCALE,
         traits: c.traits || [],
         target_traits: c.target_traits || [],
         abilities: c.abilities || {},
+        talents: Array.isArray(c.talents) ? c.talents : [],
         desc: c.desc || "",
         custom: false,
       };
+      return (Array.isArray(baseItem.talents) && baseItem.talents.length > 0)
+        ? applyTalentsToClientItem(baseItem)
+        : { ...baseItem, cost: Math.max(15, Math.round(baseItem.cost * 1.5)) };
     }),
     ...CUSTOM_UNITS.map(cu => ({
       key: cu.key || cu.id,
@@ -353,7 +639,7 @@ function getAllSelectableUnits() {
       icon: "",
       rarity: "custom",
       rarity_label: "自製",
-      scale: cu.scale || 0.72,
+      scale: cu.scale || UNIT_RENDER_SCALE,
       traits: [],
       target_traits: [],
       abilities: cu.abilities || {},
@@ -377,6 +663,7 @@ function getAbilityTags(item) {
   }
   if (ab.crit_prob > 0) tags.push(`暴擊 ${ab.crit_prob}%`);
   if (ab.savage_blow_prob > 0) tags.push(`渾身一擊 ${ab.savage_blow_prob}%`);
+  if (ab.explosion_prob > 0) tags.push(`爆波 ${ab.explosion_prob}%`);
   if (ab.wave_prob > 0) tags.push(`Lv.${ab.wave_lvl || 2} 波動 ${ab.wave_prob}%`);
   if (ab.surge_prob > 0) tags.push(`Lv.${ab.surge_lvl || 1} 烈波 ${ab.surge_prob}%`);
   if (ab.freeze_prob > 0) tags.push(`暫停 ${ab.freeze_prob}%`);
@@ -421,14 +708,15 @@ function inspectCat(item) {
   if (!item) return;
   inspectedItem = item;
   previewFrame = 0;
+  if (item.rig) ensureRigLoaded(item.rig);
 
   const badgeEl = document.getElementById("inspRarityBadge");
   if (badgeEl) {
     badgeEl.className = `rarity-badge rarity-${item.rarity}`;
-    badgeEl.textContent = item.rarity_label;
+    badgeEl.textContent = item.custom ? item.rarity_label : `${item.rarity_label}・${item.form_label || "三階"}`;
   }
   const nameEl = document.getElementById("inspName");
-  if (nameEl) nameEl.textContent = `${item.name} (Lv.${item.custom ? 1 : selectedCatLevel})`;
+  if (nameEl) nameEl.textContent = `${item.name} (${formatMaxLevelLabel(item)})`;
 
   let hitBreakdownHtml = "";
   if (Array.isArray(item.attack_hits) && item.attack_hits.length > 1) {
@@ -455,6 +743,41 @@ function inspectCat(item) {
   if (descEl) {
     descEl.textContent = item.desc ? item.desc.replace(/\|/g, " ") : "官方貓咪大戰爭正版授權數據角色。";
   }
+
+  // Character Tuning Panel: Official PONOS Talents & Ultra Talents ON/OFF toggles
+  const talEl = document.getElementById("inspTalentsBox");
+  if (talEl) {
+    const talents = Array.isArray(item.talents) ? item.talents : [];
+    if (talents.length === 0) {
+      talEl.innerHTML = `<div style="font-size:12px;color:#6c7d99;padding:4px 0;">此角色目前在官方 v15.6.1 尚無開放本能。</div>`;
+    } else {
+      const dis = getDisabledTalentSet(item.key);
+      const enabledCnt = talents.filter(t => !dis.has(Number(t.idx))).length;
+      const rowsHtml = talents.map(t => {
+        const isOn = !dis.has(Number(t.idx));
+        const ultraTag = t.is_ultra ? `<span style="background:#7c3aed;color:#fff;font-size:10px;padding:1px 5px;border-radius:4px;margin-right:4px;font-weight:800;">超本能</span>` : "";
+        return `
+          <label class="talent-toggle-row ${isOn ? "on" : "off"}">
+            <input type="checkbox" ${isOn ? "checked" : ""} onchange="toggleUnitTalent('${item.key}', ${t.idx}, this.checked)" />
+            <span class="talent-text">
+              <span class="talent-title">${ultraTag}${t.name}</span>
+              <span class="talent-sub">${t.summary}</span>
+            </span>
+          </label>
+        `;
+      }).join("");
+      talEl.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:12px;font-weight:800;color:#ffd166;">本能調整選單（已開啟 ${enabledCnt}/${talents.length}）</span>
+          <div style="display:flex;gap:4px;">
+            <button type="button" class="preset-btn" style="padding:2px 8px;font-size:11px;" onclick="setAllUnitTalents('${item.key}', true)">全開</button>
+            <button type="button" class="preset-btn" style="padding:2px 8px;font-size:11px;" onclick="setAllUnitTalents('${item.key}', false)">全關</button>
+          </div>
+        </div>
+        <div class="talent-list">${rowsHtml}</div>
+      `;
+    }
+  }
 }
 
 function applyDeckPreset(mode) {
@@ -463,23 +786,23 @@ function applyDeckPreset(mode) {
   let keys = [];
   if (mode === "balanced" || mode === "all_star") {
     keys = [
-      "cat", "tank_cat", "rare_pogo", "rare_salon", "sr_swimmer",
-      "sr_kotatsu", "ex_bahamut", "uber_balrog", "uber_hanzo", "legend_momoco",
+      "cat_000_s", "cat_001_s", "cat_018_s", "cat_037_s", "cat_041_s",
+      "cat_032_s", "cat_031_s", "cat_024_s", "cat_025_s", "cat_455_s",
     ];
   } else if (mode === "normal_ex") {
     keys = [
-      "cat", "tank_cat", "axe_cat", "gross_cat", "cow_cat",
-      "bird_cat", "fish_cat", "lizard_cat", "titan_cat", "ex_bahamut",
+      "cat_000_s", "cat_001_s", "cat_002_s", "cat_003_s", "cat_004_s",
+      "cat_005_s", "cat_006_s", "cat_007_s", "cat_008_s", "cat_025_s",
     ];
   } else if (mode === "uber_legend") {
     keys = [
-      "cat", "tank_cat", "rare_pogo", "uber_balrog", "uber_ice_queen",
-      "uber_cat_machine", "uber_hanzo", "legend_momoco", "legend_assassin", "legend_shirou",
+      "cat_000_s", "cat_001_s", "cat_196_u", "cat_417_u", "cat_044_s",
+      "cat_733_s", "cat_059_u", "cat_073_u", "cat_448_s", "cat_455_s",
     ];
   } else if (mode === "rush") {
     keys = [
-      "cat", "cow_cat", "ex_ninja", "rare_pogo", "sr_swimmer",
-      "ex_valkyrie", "uber_balrog", "uber_hanzo", "uber_tornado_dragon", "legend_assassin",
+      "cat_000_s", "cat_004_s", "cat_018_s", "cat_021_s", "cat_036_s",
+      "cat_024_s", "cat_025_s", "cat_044_s", "cat_075_u", "cat_455_s",
     ];
   }
   SELECTED_DECK = keys.filter(k => byKey.has(k)).slice(0, 10);
@@ -588,9 +911,22 @@ function renderDeckSelector() {
   const container = document.getElementById("deckChipsContainer");
   if (container) {
     container.innerHTML = "";
-    const filtered = selectedRarityFilter === "ALL"
+    let filtered = selectedRarityFilter === "ALL"
       ? allItems
       : allItems.filter(x => x.rarity === selectedRarityFilter);
+
+    if (onlyTalentedFilter) {
+      filtered = filtered.filter(item => Array.isArray(item.talents) && item.talents.length > 0);
+    }
+
+    if (rosterSearchQuery) {
+      const q = rosterSearchQuery;
+      filtered = filtered.filter(item => {
+        const talNames = (item.talents || []).map(t => t.name).join(" ");
+        const hay = `${item.name} ${item.key} ${item.rig} ${item.rarity_label} ${item.form_label || ""} ${talNames} ${getAbilityTags(item).join(" ")}`.toLowerCase();
+        return hay.includes(q);
+      });
+    }
 
     filtered.forEach(item => {
       const card = document.createElement("div");
@@ -598,17 +934,23 @@ function renderDeckSelector() {
       const isSel = slotIdx >= 0;
       card.className = "unit-chip" + (isSel ? " selected" : "");
       const iconHtml = item.icon
-        ? `<img class="chip-icon" src="/assets/${item.icon}.png" alt="${item.name}">`
+        ? `<img loading="lazy" class="chip-icon" src="/assets/${item.icon}.png" alt="${item.name}">`
         : `<div class="chip-icon" style="display:flex;align-items:center;justify-content:center;color:#ff9ff3;font-weight:900;font-size:12px;">自製</div>`;
       const abTags = getAbilityTags(item).slice(0, 2).join("・");
+      const lvStr = formatMaxLevelLabel(item);
+      const formTag = item.custom ? "" : `<span style="font-size:10px;color:#ffd166;font-weight:800;">${item.form_label || ""}</span>`;
+      const talCnt = Array.isArray(item.talents) ? item.talents.length : 0;
+      const talTag = talCnt > 0 ? `<span style="font-size:9px;background:#1e3a2f;color:#7bed9f;border:1px solid #2e7d52;padding:0 4px;border-radius:4px;font-weight:800;">本能 ${item.enabled_talent_count ?? talCnt}/${talCnt}</span>` : "";
       card.innerHTML = `
         ${iconHtml}
         <div class="chip-info">
-          <div style="display:flex;align-items:center;gap:4px;">
+          <div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap;">
             <span class="rarity-badge rarity-${item.rarity}">${item.rarity_label}</span>
+            ${formTag}
+            ${talTag}
             <span class="chip-title">${item.name}</span>
           </div>
-          <div class="chip-meta">費用 <strong style="color:#ffe066;">${item.cost}元</strong> ｜ 射程 ${item.range}</div>
+          <div class="chip-meta">費用 <strong style="color:#ffe066;">${item.cost}元</strong> ｜ ${lvStr} ｜ 射程 ${item.range}</div>
           <div class="chip-meta" style="color:#7bed9f;">HP ${item.hp.toLocaleString()} / AP ${item.ap.toLocaleString()}</div>
           <div class="chip-meta" style="color:#8ec5ff;font-size:10px;">${abTags}</div>
         </div>
@@ -638,6 +980,29 @@ function renderDeckSelector() {
 
   const lbl = document.getElementById("deckCountLabel");
   if (lbl) lbl.textContent = `已選 ${SELECTED_DECK.length} / 10`;
+
+  refreshActiveCombos();
+
+  // Also update compact 10-slot summary strip on the clean Entry Hub tab (#lobbyDeckPreview)
+  const summaryEl = document.getElementById("lobbyDeckPreview");
+  if (summaryEl) {
+    summaryEl.innerHTML = "";
+    SELECTED_DECK.slice(0, 10).forEach(k => {
+      const it = byKey.get(k);
+      if (!it) return;
+      const chip = document.createElement("div");
+      chip.className = "lobby-deck-mini";
+      chip.title = `${it.name} (${formatMaxLevelLabel(it)})`;
+      chip.innerHTML = it.icon
+        ? `<img src="/assets/${it.icon}.png" alt="${it.name}"><span>${it.name}</span>`
+        : `<div class="mini-custom">★</div><span>${it.name}</span>`;
+      chip.onclick = () => {
+        inspectCat(it);
+        switchTab("formation");
+      };
+      summaryEl.appendChild(chip);
+    });
+  }
 }
 
 function renderFormationPreview() {
@@ -657,8 +1022,8 @@ function renderFormationPreview() {
   const rigCode = inspectedItem.rig || "000_f";
   const rigObj = RIGS[rigCode] || RIGS["000_f"];
   const isEnemyRig = rigObj ? !!rigObj.is_enemy : rigCode.includes("_e");
-  const baseScale = inspectedItem.scale || 0.62;
-  const previewScale = Math.min(0.58, baseScale * 0.78);
+  const baseScale = inspectedItem.scale || UNIT_RENDER_SCALE;
+  const previewScale = Math.min(0.95, baseScale * 0.72);
   renderSkeletalRig(ctx, rigCode, formationPreviewAnim, previewFrame, pCanvas.width * 0.52, 150, previewScale, isEnemyRig);
 }
 
@@ -701,11 +1066,15 @@ function renderCustomUnitLibrary() {
 }
 
 async function saveCustomUnit() {
+  const baseRig = document.getElementById("cuRig").value;
+  const rigObj = RIGS[baseRig];
+  const rigAtkMax = (rigObj && rigObj.anims && rigObj.anims.attack && rigObj.anims.attack.max_frame) || 24;
+  const preAtkFrames = Math.min(10, Math.max(2, rigAtkMax - 2));
   const spec = {
     id: document.getElementById("cuId").value.trim() || `custom_${Date.now()}`,
     name: document.getElementById("cuName").value.trim() || "自製英雄貓",
-    base_rig: document.getElementById("cuRig").value,
-    scale: parseFloat(document.getElementById("cuScale").value) || 0.72,
+    base_rig: baseRig,
+    scale: parseFloat(document.getElementById("cuScale").value) || UNIT_RENDER_SCALE,
     is_area_attack: document.getElementById("cuArea").value === "true",
     hp: parseInt(document.getElementById("cuHp").value, 10) || 10000,
     ap: parseInt(document.getElementById("cuAp").value, 10) || 2000,
@@ -714,9 +1083,9 @@ async function saveCustomUnit() {
     cost: parseInt(document.getElementById("cuCost").value, 10) || 400,
     cd_frames: parseInt(document.getElementById("cuCd").value, 10) || 60,
     kb_count: 3,
-    pre_atk_frames: 10,
+    pre_atk_frames: preAtkFrames,
     tba_frames: 20,
-    attack_anim_frames: 24,
+    attack_anim_frames: Math.max(preAtkFrames + 2, rigAtkMax),
     abilities: {
       wave_prob: parseInt(document.getElementById("cuWaveProb").value, 10) || 0,
       wave_lvl: parseInt(document.getElementById("cuWaveLvl").value, 10) || 2,
@@ -810,6 +1179,7 @@ async function createRoom(vsAi = false) {
         vs_ai: vsAi,
         deck: SELECTED_DECK,
         cat_level: selectedCatLevel,
+        talent_overrides: TALENT_OVERRIDES,
         custom_units: CUSTOM_UNITS,
       }),
     });
@@ -842,6 +1212,7 @@ async function joinRoomDirect(code) {
         room_code: code,
         player_name: playerName,
         deck: SELECTED_DECK,
+        talent_overrides: TALENT_OVERRIDES,
         custom_units: CUSTOM_UNITS,
       }),
     });
@@ -869,6 +1240,7 @@ function enterBattleRoom(roomCode, team, initialState) {
   fxFloatingTexts = [];
   fxWaves = [];
   fxSurges = [];
+  fxExplosions = [];
   fxWaveBlocks = [];
   fxBossShockwaves = [];
   fxToxic = [];
@@ -877,9 +1249,24 @@ function enterBattleRoom(roomCode, team, initialState) {
   fxShieldShatters = [];
   cameraShake = { timer: 0, intensity: 0, dx: 0, dy: 0 };
 
-  // Position camera near our own castle initially with full castle margin
-  const stageLen = (initialState && initialState.length) || 2600;
-  cameraX = team === TEAM_CAT ? Math.max(-70, stageLen - SCREEN_W + 60) : -60;
+  // Position camera near our own castle initially at native 2-row 0.8897 zoom
+  const stageLen = (initialState && initialState.length) || 5200;
+  battleZoom = BATTLE_MAX_ZOOM_2ROW;
+  const stageLenPx = stageLen * (BATTLE_WORLD_SCALE * battleZoom);
+  cameraX = stageLenPx < SCREEN_W
+    ? (stageLenPx - SCREEN_W) * 0.5
+    : (team === TEAM_CAT ? Math.max(0, stageLenPx - SCREEN_W) : 0);
+
+  // Pre-fetch all deck unit rigs so first deployment has zero loading blank frames
+  const deckRigs = [];
+  if (initialState && initialState.teams) {
+    Object.values(initialState.teams).forEach(t => {
+      if (t && Array.isArray(t.cards)) {
+        t.cards.forEach(c => { if (c && c.rig) deckRigs.push(c.rig); });
+      }
+    });
+  }
+  if (deckRigs.length > 0) ensureRigsLoaded(deckRigs);
 
   document.getElementById("currentRoomCodeDisplay").textContent = roomCode;
   switchTab("battle");
@@ -930,9 +1317,12 @@ function onReceiveRoomState(st) {
 
   // Synchronize 60/120 FPS client-side unit visual interpolators
   const activeIds = new Set();
+  const missingRigs = [];
   if (st && Array.isArray(st.units)) {
     st.units.forEach(u => {
       activeIds.add(u.id);
+      if (u.rig && !RIGS[u.rig]) missingRigs.push(u.rig);
+      const isOneshot = new URLSearchParams(window.location.search).get("oneshot") === "1";
       let vis = unitVisualState.get(u.id);
       const atkId = u.atk_id || 0;
       if (!vis || vis.key !== u.key) {
@@ -940,18 +1330,27 @@ function onReceiveRoomState(st) {
           key: u.key,
           renderX: u.x,
           targetX: u.x,
+          renderY: u.y || 0,
+          targetY: u.y || 0,
           localAf: u.af,
+          serverAf: u.af,
           anim: u.anim,
           atkId: atkId,
         };
         unitVisualState.set(u.id, vis);
       } else {
         vis.targetX = u.x;
+        vis.targetY = u.y || 0;
+        const prevServerAf = vis.serverAf !== undefined ? vis.serverAf : u.af;
+        vis.serverAf = u.af;
         if (vis.anim !== u.anim || (u.anim === "attack" && vis.atkId !== atkId)) {
           vis.anim = u.anim;
           vis.atkId = atkId;
           vis.localAf = u.af;
-        } else if (Math.abs(vis.localAf - u.af) > 3.0) {
+        } else if (isOneshot) {
+          vis.localAf = u.af;
+        } else if (u.af < prevServerAf || (u.af - vis.localAf) > 1.5) {
+          // Looping frame wrap (walk/idle/kb) or >1.5f lag catch-up; never snap backwards mid-attack
           vis.localAf = u.af;
         }
       }
@@ -960,6 +1359,7 @@ function onReceiveRoomState(st) {
   for (const k of unitVisualState.keys()) {
     if (!activeIds.has(k)) unitVisualState.delete(k);
   }
+  if (missingRigs.length > 0) ensureRigsLoaded(missingRigs);
 
   const statusEl = document.getElementById("battleStatusText");
   if (statusEl) {
@@ -1056,6 +1456,7 @@ function onReceiveRoomState(st) {
           dir: dir,
           lvl: ev.level || 2,
           team: ev.team || 0,
+          isMini: !!ev.is_mini,
           seg0: ev.seg0 !== undefined ? ev.seg0 : 67.5,
           prog: ev.prog || 200,
           segFrames: ev.seg_frames || 3,
@@ -1063,12 +1464,25 @@ function onReceiveRoomState(st) {
         });
       } else if (ev.type === "surge") {
         const lvl = ev.level || 1;
+        const delay = ev.delay !== undefined ? ev.delay : 15;
+        const totalLife = ev.total_duration || (delay + (ev.duration || 20 * lvl) + 10);
         fxSurges.push({
           x: ev.x,
           team: ev.team || 0,
           lvl: lvl,
-          maxLife: ev.duration || 20 * lvl,
+          isMini: !!ev.is_mini,
+          isCounter: !!ev.is_counter,
+          delay: delay,
+          maxLife: totalLife,
           radius: 187.5,
+          age: 0,
+        });
+      } else if (ev.type === "explosion") {
+        fxExplosions.push({
+          x: ev.x,
+          team: ev.team || 0,
+          delay: ev.delay !== undefined ? ev.delay : 15,
+          maxLife: (ev.delay || 15) + (ev.duration || 65),
           age: 0,
         });
       } else if (ev.type === "wave_block" || ev.type === "warp_block") {
@@ -1076,7 +1490,7 @@ function onReceiveRoomState(st) {
           x: ev.x,
           team: ev.team || 0,
           age: 0,
-          maxLife: 18,
+          maxLife: 20,
         });
       } else if (ev.type === "boss_shockwave") {
         fxBossShockwaves.push({
@@ -1159,12 +1573,8 @@ function onReceiveRoomState(st) {
 
 async function sendRoomAction(action, payload = null) {
   if (!currentRoomCode) return;
-  if (action === "SPAWN_UNIT") AUDIO.playSFX("deploy");
-  else if (action === "UPGRADE_WORKER") AUDIO.playSFX("wallet_up");
-  else if (action === "FIRE_CANNON") AUDIO.playSFX("cannon_fire");
-  else AUDIO.playSFX("click");
   try {
-    await fetch("/api/room/action", {
+    const res = await fetch("/api/room/action", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1174,6 +1584,13 @@ async function sendRoomAction(action, payload = null) {
         payload,
       }),
     });
+    const data = await res.json();
+    if (data && data.ok) {
+      if (action === "SPAWN_UNIT") AUDIO.playSFX("deploy");
+      else if (action === "UPGRADE_WORKER") AUDIO.playSFX("wallet_up");
+      else if (action === "FIRE_CANNON") AUDIO.playSFX("cannon_fire");
+      else AUDIO.playSFX("click");
+    }
   } catch (_) {}
 }
 
@@ -1207,20 +1624,21 @@ function evalPolynomialEase(kfs, kfIdx, localFrame) {
     high = j;
     if (kfs[j][2] !== 3) break;
   }
-  let sum = 0.0;
+  let sum = 0;
+  const lf = Math.trunc(localFrame);
   for (let j = low; j <= high; j++) {
-    let val = kfs[j][1] * 4096.0;
+    let val = kfs[j][1] * 4096;
     for (let k = low; k <= high; k++) {
       if (k !== j) {
         const denom = kfs[j][0] - kfs[k][0];
         if (denom !== 0) {
-          val = (val * (localFrame - kfs[k][0])) / denom;
+          val = Math.trunc((val * (lf - kfs[k][0])) / denom);
         }
       }
     }
     sum += val;
   }
-  return sum / 4096.0;
+  return Math.trunc(sum / 4096);
 }
 
 function evalTrackValue(track, frame) {
@@ -1261,7 +1679,7 @@ function evalTrackValue(track, frame) {
       const t = (localF - kf1[0]) / fSpan;
       let rawVal;
       if (easeMode === 0) {
-        rawVal = kf1[1] + t * (kf2[1] - kf1[1]);
+        return kf1[1] + Math.trunc(((kf2[1] - kf1[1]) * (localF - kf1[0])) / fSpan);
       } else if (easeMode === 2) {
         let factor;
         if (easePower >= 0) {
@@ -1284,21 +1702,15 @@ function evalTrackValue(track, frame) {
   return kfs[kfs.length - 1][1];
 }
 
-function renderSkeletalRig(ctx, rigCode, animName, frame, rootX, rootY, scale = 0.62, flipH = false) {
-  const rig = RIGS[rigCode] || RIGS["000_f"];
-  if (!rig) return;
-  const sheet = loadImage(`rig_${rig.code}`, rig.png);
-  if (!sheet || !sheet.complete || sheet.naturalWidth === 0) return;
-
+function evaluateNativePose(rig, animName, intFrame, flipH = false) {
   const model = rig.model;
   const su = model.scale_unit || 1000;
   const au = model.angle_unit || 3600;
   const alu = model.alpha_unit || 1000;
   const rawParts = model.parts;
   const numParts = rawParts.length;
-  const effScale = scale;
 
-  // 1. Initialize runtime part state from base model
+  // 1. Reset runtime delta channels and overrideable slots (libnative-lib.so 0x340a88..0x340ac0)
   const parts = new Array(numParts);
   for (let i = 0; i < numParts; i++) {
     const p = rawParts[i];
@@ -1317,22 +1729,20 @@ function renderSkeletalRig(ctx, rigCode, animName, frame, rootX, rootY, scale = 
       baseRot: p[11],
       baseAlpha: p[12],
       glow: p[13],
-      x: p[5],
-      y: p[6],
-      px: p[7],
-      py: p[8],
-      gsca: su,
-      sx: p[9],
-      sy: p[10],
-      rot: p[11],
-      alpha: p[12],
-      hFlip: false,
-      vFlip: false,
+      animX: 0,
+      animY: 0,
+      animPx: 0,
+      animPy: 0,
+      animSx: su,
+      animSy: su,
+      animRot: 0,
+      animAlpha: alu,
+      ownHFlip: false,
+      ownVFlip: false,
     };
   }
 
-  // 2. Apply animation tracks at integer 30 FPS frame (matching tbcml UnitAnimation.set_frame)
-  const intFrame = Math.floor(frame);
+  // 2. Apply tracks in file order with OVERWRITE semantics (0x340c84..0x340d90)
   const anim = (rig.anims && (rig.anims[animName] || rig.anims.walk)) || null;
   if (anim && anim.tracks) {
     for (let t = 0; t < anim.tracks.length; t++) {
@@ -1346,164 +1756,173 @@ function renderSkeletalRig(ctx, rigCode, animName, frame, rootX, rootY, scale = 
             case 0: pt.parent = val; break;
             case 1: pt.unit = val; break;
             case 2: pt.cut = val; break;
-            case 3: pt.z = val * numParts + pt.index; break;
-            case 4: pt.x = pt.baseX + val; break;
-            case 5: pt.y = pt.baseY + val; break;
-            case 6: pt.px = pt.basePx + val; break;
-            case 7: pt.py = pt.basePy + val; break;
-            case 8: pt.gsca = val; break;
-            case 9: pt.sx = Math.trunc((val * pt.baseSx) / su); break;
-            case 10: pt.sy = Math.trunc((val * pt.baseSy) / su); break;
-            case 11: pt.rot = pt.baseRot + val; break;
-            case 12: pt.alpha = Math.trunc((val * pt.baseAlpha) / alu); break;
-            case 13: pt.hFlip = !!val; break;
-            case 14: pt.vFlip = !!val; break;
+            case 3: pt.z = val; break;
+            case 4: pt.animX = val; break;
+            case 5: pt.animY = val; break;
+            case 6: pt.animPx = val; break;
+            case 7: pt.animPy = val; break;
+            case 8: pt.animSx = val; pt.animSy = val; break;
+            case 9: pt.animSx = val; break;
+            case 10: pt.animSy = val; break;
+            case 11: pt.animRot = val; break;
+            case 12: pt.animAlpha = val; break;
+            case 13: pt.ownHFlip = !!val; break;
+            case 14: pt.ownVFlip = !!val; break;
           }
         }
       }
     }
   }
 
+  // 3. Recursive parent-first evaluation matching 0x33f0d8..0x33f63c
+  const states = new Array(numParts).fill(null);
+  const visiting = new Set();
 
-
-  // 3. Exact PONOS tbcml 2x3 Affine Matrix Hierarchy (tbcml/core/anim/model_part.py lines 327-357, 467-572)
-  function getRealScale(idx) {
+  function evalPart(idx) {
+    if (states[idx]) return states[idx];
     const p = parts[idx];
-    const gk = su ? p.gsca / su : 1.0;
-    const sx = (su ? p.sx / su : 1.0) * gk * (p.hFlip ? -1.0 : 1.0);
-    const sy = (su ? p.sy / su : 1.0) * gk * (p.vFlip ? -1.0 : 1.0);
-    return [sx, sy];
-  }
+    const pid = p.parent;
+    const hasParent = pid >= 0 && pid < numParts && pid !== idx && !visiting.has(pid) && !visiting.has(idx);
 
-  function getRecursiveScale(idx, visited = new Set()) {
-    if (visited.has(idx) || idx < 0 || idx >= numParts) return [1.0, 1.0];
-    visited.add(idx);
-    const p = parts[idx];
-    const [sx, sy] = getRealScale(idx);
-    if (p.parent >= 0 && p.parent < numParts && p.parent !== idx) {
-      const [psx, psy] = getRecursiveScale(p.parent, visited);
-      return [sx * psx, sy * psy];
-    }
-    return [sx, sy];
-  }
+    let ps = null;
+    let realSx, realSy, realAlpha, effHFlip, effVFlip;
 
-  function getRecursiveAlpha(idx, visited = new Set()) {
-    if (visited.has(idx) || idx < 0 || idx >= numParts) return 1.0;
-    visited.add(idx);
-    const p = parts[idx];
-    const a = alu ? p.alpha / alu : 1.0;
-    if (p.parent >= 0 && p.parent < numParts && p.parent !== idx) {
-      return getRecursiveAlpha(p.parent, visited) * a;
-    }
-    return a;
-  }
+    if (hasParent) {
+      visiting.add(idx);
+      ps = evalPart(pid);
+      visiting.delete(idx);
 
-  function getBaseP0Size() {
-    if (numParts > 0) {
-      const p0 = parts[0];
-      return [su ? p0.baseSx / su : 1.0, su ? p0.baseSy / su : 1.0];
-    }
-    return [1.0, 1.0];
-  }
-
-  function getMatrix(idx, visited = new Set()) {
-    if (visited.has(idx) || idx < 0 || idx >= numParts) {
-      return [1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-    }
-    visited.add(idx);
-    const p = parts[idx];
-    let m;
-    let tSizX = effScale;
-    let tSizY = effScale;
-
-    if (p.parent >= 0 && p.parent < numParts && p.parent !== idx) {
-      m = [...getMatrix(p.parent, visited)];
-      const [parentRecSx, parentRecSy] = getRecursiveScale(p.parent);
-      tSizX = parentRecSx * effScale;
-      tSizY = parentRecSy * effScale;
+      realSx = Math.trunc(Math.trunc((p.baseSx * p.animSx * ps.realSx) / su) / su);
+      realSy = Math.trunc(Math.trunc((p.baseSy * p.animSy * ps.realSy) / su) / su);
+      realAlpha = Math.trunc(Math.trunc((p.baseAlpha * p.animAlpha * ps.realAlpha) / alu) / alu);
+      effHFlip = (p.ownHFlip ? 1 : 0) ^ ps.effHFlip;
+      effVFlip = (p.ownVFlip ? 1 : 0) ^ ps.effVFlip;
     } else {
-      m = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+      realSx = Math.trunc((p.baseSx * p.animSx) / su);
+      if (flipH) realSx = -realSx;
+      realSy = Math.trunc((p.baseSy * p.animSy) / su);
+      realAlpha = Math.trunc((p.baseAlpha * p.animAlpha) / alu);
+      effHFlip = p.ownHFlip ? 1 : 0;
+      effVFlip = p.ownVFlip ? 1 : 0;
     }
 
-    if (p.index !== 0) {
-      const tx = p.x * tSizX;
-      const ty = p.y * tSizY;
-      m[2] += m[0] * tx + m[1] * ty;
-      m[5] += m[3] * tx + m[4] * ty;
+    // 0x33f208..0x33f21c
+    if (p.ownHFlip) realSx = -realSx;
+    if (p.ownVFlip) realSy = -realSy;
+
+    let m0, m1, m2, m3, m4, m5;
+    if (ps) {
+      const pm = ps.mat;
+      m0 = pm[0]; m1 = pm[1]; m2 = pm[2];
+      m3 = pm[3]; m4 = pm[4]; m5 = pm[5];
+      const tx = Math.trunc((ps.realSx * (p.baseX + p.animX)) / su);
+      const ty = Math.trunc((ps.realSy * (p.baseY + p.animY)) / su);
+      m2 += m0 * tx + m1 * ty;
+      m5 += m3 * tx + m4 * ty;
     } else {
-      let d0 = 0.0;
-      let d1 = 0.0;
-      if (model.ints && model.ints.length > 0 && model.ints[0].length >= 4) {
-        d0 = model.ints[0][2];
-        d1 = model.ints[0][3];
-      }
-      const [baseP0X, baseP0Y] = getBaseP0Size();
-      const p3X = d0 * baseP0X * effScale;
-      const p3Y = d1 * baseP0Y * effScale;
-      const [recP0X, recP0Y] = getRecursiveScale(0);
-      const px = p.px * recP0X * effScale;
-      const py = p.py * recP0Y * effScale;
-      const x = px - p3X;
-      const y = py - p3Y;
-      m[2] += m[0] * x + m[1] * y;
-      m[5] += m[3] * x + m[4] * y;
+      m0 = 1.0; m1 = 0.0; m2 = p.animX;
+      m3 = 0.0; m4 = 1.0; m5 = p.animY;
     }
 
-    if (p.rot !== 0) {
-      const degrees = (p.rot / au) * 360.0;
-      const rad = (degrees * Math.PI) / 180.0;
+    // 0x33f58c..0x33f5d8: local rotation with flip_h and (effHFlip != effVFlip) negation
+    const totalRot = p.baseRot + p.animRot;
+    if (totalRot !== 0) {
+      let deg = (totalRot * 360.0) / au;
+      if (flipH) deg = -deg;
+      if (effHFlip !== effVFlip) deg = -deg;
+      const rad = (deg * Math.PI) / 180.0;
       const sinR = Math.sin(rad);
       const cosR = Math.cos(rad);
-      const f0 = m[0] * cosR + m[1] * sinR;
-      const f1 = m[3] * cosR + m[4] * sinR;
-      const f2 = m[0] * -sinR + m[1] * cosR;
-      const f3 = m[3] * -sinR + m[4] * cosR;
-      m[0] = f0;
-      m[3] = f1;
-      m[1] = f2;
-      m[4] = f3;
+      const f0 = m0 * cosR + m1 * sinR;
+      const f1 = m1 * cosR - m0 * sinR;
+      const f3 = m3 * cosR + m4 * sinR;
+      const f4 = m4 * cosR - m3 * sinR;
+      m0 = f0; m1 = f1; m3 = f3; m4 = f4;
     }
-    return m;
+
+    const st = {
+      realSx,
+      realSy,
+      realAlpha,
+      effHFlip,
+      effVFlip,
+      effPx: p.basePx + p.animPx,
+      effPy: p.basePy + p.animPy,
+      mat: [m0, m1, m2, m3, m4, m5],
+    };
+    states[idx] = st;
+    return st;
   }
 
-  const order = [];
   for (let i = 0; i < numParts; i++) {
-    order.push(i);
+    evalPart(i);
   }
+
+  // 4. ints[0] anchor subtraction (0x33f9e0)
+  let anchorX = 0;
+  let anchorY = 0;
+  if (model.ints && model.ints.length > 0 && model.ints[0].length >= 4 && numParts > 0) {
+    const row0 = model.ints[0];
+    const apId = row0[0];
+    if (apId >= 0 && apId < numParts) {
+      const aps = states[apId];
+      const lx = Math.trunc((aps.realSx * (row0[2] - aps.effPx)) / su);
+      const ly = Math.trunc((aps.realSy * (row0[3] - aps.effPy)) / su);
+      const am = aps.mat;
+      anchorX = Math.trunc(am[2] + am[0] * lx + am[1] * ly);
+      anchorY = Math.trunc(am[5] + am[3] * lx + am[4] * ly);
+    }
+  }
+
+  return { parts, states, anchorX, anchorY, su, alu, numParts };
+}
+
+function renderSkeletalRig(ctx, rigCode, animName, frame, rootX, rootY, scale = UNIT_RENDER_SCALE, flipH = false) {
+  let rig = RIGS[rigCode];
+  if (!rig) {
+    if (rigCode) ensureRigLoaded(rigCode);
+    return;
+  }
+  const sheet = loadImage(`rig_${rig.code}`, rig.png);
+  if (!sheet || !sheet.complete || sheet.naturalWidth === 0) return;
+
+  const intFrame = Math.floor(frame);
+  const pose = evaluateNativePose(rig, animName, intFrame, flipH);
+  const { parts, states, anchorX, anchorY, su, alu, numParts } = pose;
+
+  const order = new Array(numParts);
+  for (let i = 0; i < numParts; i++) order[i] = i;
   order.sort((a, b) => parts[a].z - parts[b].z || a - b);
 
-  // 4. Draw sorted bone cuts onto Canvas using exact tbcml affine transform
+  // 4. Draw sorted parts with native signed affine matrix and ints[0] anchor offset
   ctx.save();
   ctx.translate(rootX, rootY);
-  if (flipH) {
-    ctx.scale(-1, 1);
-  }
 
   for (let k = 0; k < order.length; k++) {
     const i = order[k];
     const p = parts[i];
-    if (p.parent < 0 || p.unit < 0 || p.cut < 0) continue;
+    if (p.unit < 0 || p.cut < 0) continue;
     const cut = rig.cuts[p.cut];
     if (!cut || cut[2] <= 0 || cut[3] <= 0) continue;
 
-    const alpha = Math.max(0.0, Math.min(1.0, getRecursiveAlpha(i)));
+    const st = states[i];
+    const alpha = Math.max(0.0, Math.min(1.0, st.realAlpha / alu));
     if (alpha <= 0.01) continue;
 
-    const [recSx, recSy] = getRecursiveScale(i);
-    const scx = Math.abs(recSx * effScale);
-    const scy = Math.abs(recSy * effScale);
-    if (scx < 1e-4 || scy < 1e-4) continue;
+    const sx = (st.realSx / su) * scale;
+    const sy = (st.realSy / su) * scale;
+    if (Math.abs(sx) < 1e-4 || Math.abs(sy) < 1e-4) continue;
 
-    const m = getMatrix(i);
-    const flipX = recSx < 0 ? -1.0 : 1.0;
-    const flipY = recSy < 0 ? -1.0 : 1.0;
-    const tM0 = m[0] * flipX;
-    const tM1 = m[1] * flipY;
-    const tM3 = m[3] * flipX;
-    const tM4 = m[4] * flipY;
-
+    const m = st.mat;
     ctx.save();
-    ctx.transform(tM0, tM3, tM1, tM4, m[2], m[5]);
+    ctx.transform(
+      m[0] * sx,
+      m[3] * sx,
+      m[1] * sy,
+      m[4] * sy,
+      (m[2] - anchorX) * scale,
+      (m[5] - anchorY) * scale
+    );
     ctx.globalAlpha = alpha;
     if (p.glow === 1 || p.glow === 2 || p.glow === 3 || p.glow === -1) {
       ctx.globalCompositeOperation = "lighter";
@@ -1514,10 +1933,10 @@ function renderSkeletalRig(ctx, rigCode, animName, frame, rootX, rootY, scale = 
       cut[1],
       cut[2],
       cut[3],
-      -p.px * scx,
-      -p.py * scy,
-      cut[2] * scx,
-      cut[3] * scy
+      -st.effPx,
+      -st.effPy,
+      cut[2],
+      cut[3]
     );
     ctx.restore();
   }
@@ -1549,7 +1968,14 @@ function renderBattleScene() {
   ctx.clearRect(0, 0, SCREEN_W, SCREEN_H);
 
   const st = roomState;
-  const stageLen = (st && st.length) || 2600;
+  const stageLen = (st && st.length) || 5200;
+  const { minZoom, maxZoom } = getBattleZoomBounds(stageLen);
+  battleZoom = Math.max(minZoom, Math.min(maxZoom, battleZoom));
+  const worldScale = BATTLE_WORLD_SCALE * battleZoom;
+  const unitScale = UNIT_RENDER_SCALE * battleZoom;
+  const stageLenPx = stageLen * worldScale;
+  const minCamX = stageLenPx < SCREEN_W ? (stageLenPx - SCREEN_W) * 0.5 : -40;
+  const maxCamX = stageLenPx < SCREEN_W ? (stageLenPx - SCREEN_W) * 0.5 : (stageLenPx - SCREEN_W) + 40;
 
   // Auto-follow frontline if player isn't manually dragging camera
   if (manualCameraHold > 0) {
@@ -1560,23 +1986,32 @@ function renderBattleScene() {
       const leadX = myTeam === TEAM_CAT
         ? Math.min(...myUnits.map(u => u.x))
         : Math.max(...myUnits.map(u => u.x));
-      const targetCam = Math.max(-70, Math.min(stageLen - SCREEN_W + 70, leadX - SCREEN_W * 0.5));
+      const leadPx = leadX * worldScale;
+      const targetCam = Math.max(minCamX, Math.min(maxCamX, leadPx - SCREEN_W * 0.5));
       cameraX += (targetCam - cameraX) * 0.08;
     }
   }
-  cameraX = Math.max(-70, Math.min(stageLen - SCREEN_W + 70, cameraX));
-  const worldToScreenX = wx => wx - (cameraX + cameraShake.dx);
+  cameraX = Math.max(minCamX, Math.min(maxCamX, cameraX));
+  const worldToScreenX = wx => wx * worldScale - (cameraX + cameraShake.dx);
 
-  // 1. Seamless Tiled Official Korea Stage Background (bg000.png: sky + grass + brown soil at bottom)
+  // 1. Seamless Tiled Official Korea Stage Background (bg000.png: native 0x4b7cf8 960x640 * zoom * 9/8, aligned so grass strip sits on GROUND_Y)
   const bg = IMAGES.bg000;
   if (bg && bg.complete && bg.naturalWidth > 0) {
-    const scale = SCREEN_H / 510.0;
-    const tileW = Math.round(768 * scale);
-    const tileH = SCREEN_H;
+    const bgScale = (640.0 / 510.0) * unitScale;
+    const tileW = Math.round(768 * bgScale);
+    const tileH = Math.round(510 * bgScale);
+    const bgTopY = Math.round(GROUND_Y - 408 * bgScale);
+    if (bgTopY > 0) {
+      ctx.fillStyle = "#72c0f9";
+      ctx.fillRect(0, 0, SCREEN_W, bgTopY + 2);
+    }
     const rawOff = Math.floor(cameraX * 0.7) % tileW;
     const offset = (rawOff + tileW) % tileW;
     for (let x = -offset - tileW; x < SCREEN_W + tileW; x += tileW) {
-      ctx.drawImage(bg, 1, 1, 768, 510, x, 0, tileW, tileH);
+      ctx.drawImage(bg, 1, 1, 768, 510, x, bgTopY, tileW, tileH);
+      if (bgTopY + tileH < SCREEN_H) {
+        ctx.drawImage(bg, 1, 450, 768, 55, x, bgTopY + tileH - 2, tileW, SCREEN_H - (bgTopY + tileH) + 2);
+      }
     }
   } else {
     ctx.fillStyle = "#87ceeb";
@@ -1592,28 +2027,32 @@ function renderBattleScene() {
   const team1 = st && st.teams && st.teams["1"];
   const rShake = castleShake[TEAM_CAT] > 0 ? (Math.random() - 0.5) * 8 : 0;
   const lShake = castleShake[TEAM_ENEMY] > 0 ? (Math.random() - 0.5) * 8 : 0;
-  const rightCastleX = worldToScreenX((team0 && team0.castle_x) || stageLen - 120) + rShake;
-  const leftCastleX = worldToScreenX((team1 && team1.castle_x) || 120) + lShake;
+  const rightCastleX = worldToScreenX((team0 && team0.castle_x) || stageLen - 700) + rShake;
+  const leftCastleX = worldToScreenX((team1 && team1.castle_x) || 700) + lShake;
 
   const ratio1 = team1 ? Math.min(1, team1.cannon_charge / Math.max(1, team1.cannon_max)) : 0;
   const ratio0 = team0 ? Math.min(1, team0.cannon_charge / Math.max(1, team0.cannon_max)) : 0;
-  const topY1 = drawModularCatCastle(ctx, leftCastleX, true, team1 ? team1.cannon_anim : 0, ratio1);
-  const topY0 = drawModularCatCastle(ctx, rightCastleX, false, team0 ? team0.cannon_anim : 0, ratio0);
+  const topY1 = drawModularCatCastle(ctx, leftCastleX, true, team1 ? team1.cannon_anim : 0, ratio1, unitScale);
+  const topY0 = drawModularCatCastle(ctx, rightCastleX, false, team0 ? team0.cannon_anim : 0, ratio0, unitScale);
 
-  // Official Castle HP Digits (img001_tw.png cuts, NO synthetic green health bar)
-  if (team1) drawCastleHp(ctx, leftCastleX, topY1 - 24, team1.castle_hp, team1.castle_max_hp);
-  if (team0) drawCastleHp(ctx, rightCastleX, topY0 - 24, team0.castle_hp, team0.castle_max_hp);
+  // Official Castle HP Digits (img001_tw.png cuts, NO synthetic green health bar; skip when castle is off-screen)
+  if (team1 && leftCastleX > -120 && leftCastleX < SCREEN_W + 120) {
+    drawCastleHp(ctx, leftCastleX, Math.max(82, topY1 - 24), team1.castle_hp, team1.castle_max_hp);
+  }
+  if (team0 && rightCastleX > -120 && rightCastleX < SCREEN_W + 120) {
+    drawCastleHp(ctx, rightCastleX, Math.max(82, topY0 - 24), team0.castle_hp, team0.castle_max_hp);
+  }
 
   // 3. Cat Cannon Range Line & Icon on Battlefield when Local Player's Cannon is 100% Ready
   const myHud = st && st.teams && st.teams[String(myTeam)];
   if (myHud && myHud.cannon_charge >= myHud.cannon_max && IMAGES.img002 && IMAGES.img002.complete) {
-    const cRange = (st && st.cannon_range) || 800;
+    const cRange = (myHud && myHud.cannon_range) || (st && st.cannon_range) || 588.75;
     const rangeWorldX = myTeam === TEAM_CAT
-      ? Math.max(60, myHud.castle_x - 30 - cRange)
-      : Math.min(stageLen - 60, myHud.castle_x + 30 + cRange);
+      ? Math.max(0, myHud.castle_x - 67.5 - cRange)
+      : Math.min(stageLen, myHud.castle_x + 67.5 + cRange);
     const rSx = worldToScreenX(rangeWorldX);
-    drawSubImage(ctx, IMAGES.img002, 441, 260, 9, 98, rSx - 4, GROUND_Y - 120, 9, 120);
-    drawSubImage(ctx, IMAGES.img002, 442, 421, 69, 85, rSx - 28, GROUND_Y - 178, 56, 68, myTeam === TEAM_ENEMY);
+    drawSubImage(ctx, IMAGES.img002, 441, 260, 9, 98, rSx - 4 * battleZoom, GROUND_Y - 120 * battleZoom, 9 * battleZoom, 120 * battleZoom);
+    drawSubImage(ctx, IMAGES.img002, 442, 421, 69, 85, rSx - 28 * battleZoom, GROUND_Y - 178 * battleZoom, 56 * battleZoom, 68 * battleZoom, myTeam === TEAM_ENEMY);
   }
 
   // 4. Units (Sorted by slot for authentic depth layering, using 60/120 FPS smooth interpolation
@@ -1623,6 +2062,7 @@ function renderBattleScene() {
     sortedUnits.forEach(u => {
       const vis = unitVisualState.get(u.id);
       const drawWorldX = vis ? vis.renderX : u.x;
+      const drawWorldY = vis ? vis.renderY : (u.y || 0);
       const drawAf = vis ? vis.localAf : u.af;
       // [REA-AUTHENTIC-ALIGNMENT: Removed synthetic +/- 48px offset; unit root aligns 1:1 with pos_x and hitboxes]
       const visualWorldX = drawWorldX;
@@ -1671,8 +2111,10 @@ function renderBattleScene() {
       const rigObj = RIGS[u.rig] || RIGS["000_f"];
       const isEnemyRig = rigObj ? !!rigObj.is_enemy : u.rig.includes("_e");
       const flipH = isEnemyRig ? u.team === TEAM_CAT : u.team === TEAM_ENEMY;
-      // Authentic PONOS knockback: unit slides horizontally in authentic 03.maanim hurt pose
-      renderSkeletalRig(ctx, u.rig, u.anim, drawAf, sx, GROUND_Y + 4 + zOff, u.scale || 0.62, flipH);
+      // Authentic PONOS knockback: horizontal slide + native State 3/5/7 KB vertical bounce arc
+      const drawY = GROUND_Y + 4 + zOff + drawWorldY * worldScale;
+      const uScale = (u.scale ? (u.scale / UNIT_RENDER_SCALE) : 1.0) * unitScale;
+      renderSkeletalRig(ctx, u.rig, u.anim, drawAf, sx, drawY, uScale, flipH);
 
       // Starred Alien Barrier: Shimmering spherical plasma forcefield
       if (!u.is_dying && u.barrier > 0) {
@@ -1734,24 +2176,29 @@ function renderBattleScene() {
   }
 
   // 5. Combat FX (Wave Pillars, Cat Cannon Laser & Shockwave Pillars, Hit Sparks, Death Souls)
-  renderCombatFX(ctx, worldToScreenX);
+  renderCombatFX(ctx, worldToScreenX, worldScale, unitScale);
 
   // 6. Bottom Deploy Bar UI & Top Wallet HUD
   renderDeployBar(ctx, myHud);
   renderTopHud(ctx, st);
 }
 
-function drawModularCatCastle(ctx, sx, isLeftTeam, cannonAnim, cannonRatio = 0) {
+function drawModularCatCastle(ctx, sx, isLeftTeam, cannonAnim, cannonRatio = 0, unitScale = UNIT_RENDER_SCALE * battleZoom) {
   const baseImg = IMAGES.castle_base;
   const turretImg = IMAGES.castle_turret;
   const plaqueImg = IMAGES.castle_plaque;
   const beamImg = IMAGES.castle_beam;
 
-  const cw = Math.round(128 * 1.3);  // 166
-  const ch = Math.round(256 * 1.3);  // 333
-  const bw = Math.round(128 * 1.3);  // 166
-  const bh = Math.round(128 * 1.3);  // 166
-  const fcX = Math.round(sx - cw / 2);
+  // Native 0x4ae8dc..0x4aea14: Cat Castle draws at 1.27x of uniform unitScale,
+  // anchored so the castle's front wall sits right at castle.pos_x (sx) instead of sticking 200 DU into the battlefield.
+  const cs = unitScale * CASTLE_NATIVE_SCALE;
+  const cw = Math.round(128 * cs);
+  const ch = Math.round(256 * cs);
+  const bw = Math.round(128 * cs);
+  const bh = Math.round(128 * cs);
+  const csRel = cs / UNIT_RENDER_SCALE; // multiplier relative to legacy 1.125 coords
+  const castleCenterX = isLeftTeam ? Math.round(sx - cw * 0.36) : Math.round(sx + cw * 0.36);
+  const fcX = Math.round(castleCenterX - cw / 2);
   const fcY = GROUND_Y - ch;
 
   if (baseImg && baseImg.complete && turretImg && turretImg.complete) {
@@ -1766,16 +2213,17 @@ function drawModularCatCastle(ctx, sx, isLeftTeam, cannonAnim, cannonRatio = 0) 
     // 1. Full Turret Head + Radar Dish (nyankoCastle_000_00.png is 128x256, aligned with fc000.png)
     drawSubImage(ctx, turretImg, 0, 0, 128, 256, fcX + recoilX, fcY + liftOffset, cw, ch, isLeftTeam);
     // 2. Full Lower Castle Base (nyankoCastle_003_00.png is 128x128 at GROUND_Y - bh)
-    drawSubImage(ctx, baseImg, 0, 0, 128, 128, Math.round(sx - bw / 2), GROUND_Y - bh, bw, bh, isLeftTeam);
+    drawSubImage(ctx, baseImg, 0, 0, 128, 128, Math.round(castleCenterX - bw / 2), GROUND_Y - bh, bw, bh, isLeftTeam);
     // 3. Full Hanging Cat Paw Plaque (nyankoCastle_002_00.png is 128x128 at exact same origin GROUND_Y - bh)
     if (plaqueImg && plaqueImg.complete) {
-      drawSubImage(ctx, plaqueImg, 0, 0, 128, 128, Math.round(sx - bw / 2), GROUND_Y - bh, bw, bh, isLeftTeam);
+      drawSubImage(ctx, plaqueImg, 0, 0, 128, 128, Math.round(castleCenterX - bw / 2), GROUND_Y - bh, bw, bh, isLeftTeam);
     }
     // 4. Muzzle flash ONLY while actively firing (cannonAnim > 16)
     if (cannonAnim > 16 && beamImg && beamImg.complete) {
-      const mx = isLeftTeam ? sx + 44 : sx - 44;
-      const my = GROUND_Y - 195 + liftOffset;
-      drawSubImage(ctx, beamImg, 154, 157, 84, 84, mx - 55, my - 55, 110, 110);
+      const mx = isLeftTeam ? castleCenterX + Math.round(38 * csRel) : castleCenterX - Math.round(38 * csRel);
+      const my = GROUND_Y - Math.round(169 * csRel) + liftOffset;
+      const mHalf = Math.round(55 * csRel);
+      drawSubImage(ctx, beamImg, 154, 157, 84, 84, mx - mHalf, my - mHalf, mHalf * 2, mHalf * 2);
     }
     return fcY;
   } else if (IMAGES.fc000 && IMAGES.fc000.complete) {
@@ -1850,6 +2298,10 @@ function advanceClientFX30Fps() {
     fxSurges[i].age++;
     if (fxSurges[i].age >= fxSurges[i].maxLife) fxSurges.splice(i, 1);
   }
+  for (let i = fxExplosions.length - 1; i >= 0; i--) {
+    fxExplosions[i].age++;
+    if (fxExplosions[i].age >= fxExplosions[i].maxLife) fxExplosions.splice(i, 1);
+  }
   for (let i = fxWaveBlocks.length - 1; i >= 0; i--) {
     fxWaveBlocks[i].age++;
     if (fxWaveBlocks[i].age >= fxWaveBlocks[i].maxLife) fxWaveBlocks.splice(i, 1);
@@ -1885,8 +2337,9 @@ function advanceClientFX30Fps() {
   }
 }
 
-function renderCombatFX(ctx, worldToScreenX) {
-  // 1. Wave Attack Pillars (bg00.imgcut cuts 7..12 for Blue Wave, cuts 1..6 for Pink Wave)
+function renderCombatFX(ctx, worldToScreenX, worldScale = BATTLE_WORLD_SCALE, unitScale = UNIT_RENDER_SCALE) {
+  const zScale = unitScale / UNIT_RENDER_SCALE;
+  // 1. Wave & Mini-Wave Attack Pillars (Official PONOS skill_wave_attack / skill_smallwave_attack rigs)
   const blueWaveCuts = [
     [888, 83, 56, 80],
     [946, 83, 56, 80],
@@ -1905,6 +2358,10 @@ function renderCombatFX(ctx, worldToScreenX) {
   ];
   for (let i = fxWaves.length - 1; i >= 0; i--) {
     const w = fxWaves[i];
+    const rigCode = w.isMini
+      ? (w.team === TEAM_ENEMY ? "fx_miniwave_e" : "fx_miniwave")
+      : (w.team === TEAM_ENEMY ? "fx_wave_e" : "fx_wave");
+    const hasOfficialRig = !!RIGS[rigCode];
     const waveCuts = w.team === TEAM_ENEMY ? pinkWaveCuts : blueWaveCuts;
     const segFrames = w.segFrames || 3;
     const seg0 = w.seg0 !== undefined ? w.seg0 : 67.5;
@@ -1912,11 +2369,16 @@ function renderCombatFX(ctx, worldToScreenX) {
     for (let lv = 0; lv < w.lvl; lv++) {
       const trig = lv * segFrames;
       const localAge = w.age - trig;
-      if (localAge >= 0 && localAge < 12 && IMAGES.bg000 && IMAGES.bg000.complete) {
+      if (localAge >= 0 && localAge <= 12) {
         const px = worldToScreenX(w.startX + w.dir * (seg0 + lv * prog));
-        const cIdx = Math.min(waveCuts.length - 1, Math.floor(localAge / 2));
-        const wc = waveCuts[cIdx];
-        drawSubImage(ctx, IMAGES.bg000, wc[0], wc[1], wc[2], wc[3], px - 45, GROUND_Y - 132, 90, 138, w.dir > 0);
+        if (px < -180 || px > SCREEN_W + 180) continue;
+        if (hasOfficialRig) {
+          renderSkeletalRig(ctx, rigCode, "play", localAge, px, GROUND_Y + 4 * zScale, unitScale, false);
+        } else if (IMAGES.bg000 && IMAGES.bg000.complete) {
+          const cIdx = Math.min(waveCuts.length - 1, Math.floor(localAge / 2));
+          const wc = waveCuts[cIdx];
+          drawSubImage(ctx, IMAGES.bg000, wc[0], wc[1], wc[2], wc[3], px - 45 * zScale, GROUND_Y - 132 * zScale, 90 * zScale, 138 * zScale, w.dir > 0);
+        }
       }
     }
   }
@@ -1933,29 +2395,51 @@ function renderCombatFX(ctx, worldToScreenX) {
     const cb = fxCannonBeams[i];
     const sSx = worldToScreenX(cb.startX);
     const cSx = worldToScreenX(cb.castleX);
+    const isLeft = cb.team === TEAM_ENEMY;
+    const cs = unitScale * CASTLE_NATIVE_SCALE;
+    const cw = Math.round(128 * cs);
+    const cRel = CASTLE_NATIVE_SCALE * zScale;
+    const castleCenterX = isLeft ? (cSx - cw * 0.36) : (cSx + cw * 0.36);
+
     if (cb.age <= 12 && IMAGES.castle_beam && IMAGES.castle_beam.complete) {
-      const muzzleX = cb.team === TEAM_CAT ? cSx - 44 : cSx + 44;
-      const muzzleY = GROUND_Y - 195;
-      drawSubImage(ctx, IMAGES.castle_beam, 154, 157, 84, 84, muzzleX - 55, muzzleY - 55, 110, 110);
-      // Vertical laser beam cut (145, 249, 110, 6 rotated 90 deg)
+      const muzzleX = isLeft ? (castleCenterX + 38 * cRel) : (castleCenterX - 38 * cRel);
+      const muzzleY = GROUND_Y - 169 * cRel;
+      const mHalf = 55 * cRel;
+      const hitY = GROUND_Y - 10 * zScale;
+      const dx = sSx - muzzleX;
+      const dy = hitY - muzzleY;
+      const beamLen = Math.max(20, Math.hypot(dx, dy));
+      const beamAngle = Math.atan2(dy, dx);
+      const beamFade = cb.age > 8 ? Math.max(0.2, 1.0 - (cb.age - 8) / 5.0) : 1.0;
+
       ctx.save();
-      ctx.translate(sSx, muzzleY);
-      ctx.rotate(Math.PI / 2);
-      ctx.drawImage(IMAGES.castle_beam, 145, 249, 110, 6, 0, -8, GROUND_Y - muzzleY, 16);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = beamFade;
+      // Diagonal laser beam from turret muzzle straight to ground impact point
+      ctx.translate(muzzleX, muzzleY);
+      ctx.rotate(beamAngle);
+      ctx.drawImage(IMAGES.castle_beam, 145, 249, 110, 6, 0, -11 * zScale, beamLen, 22 * zScale);
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalAlpha = beamFade;
+      drawSubImage(ctx, IMAGES.castle_beam, 154, 157, 84, 84, muzzleX - mHalf, muzzleY - mHalf, mHalf * 2, mHalf * 2);
       ctx.restore();
     }
     const dist = Math.abs(cb.endX - cb.startX);
     const dir = cb.endX < cb.startX ? -1 : 1;
-    const stepPx = 72;
-    const count = Math.max(1, Math.floor(dist / stepPx) + 1);
+    const stepDu = 95.0; // Tightly-spaced authentic shockwave pillars matching 14f wavefront
+    const count = Math.max(1, Math.floor(dist / stepDu) + 1);
     for (let p = 0; p < count; p++) {
-      const trig = Math.floor((p / count) * 14);
+      const trig = Math.floor((p / Math.max(1, count - 1)) * 14);
       const lAge = cb.age - trig;
       if (lAge >= 0 && lAge < 12 && IMAGES.castle_beam && IMAGES.castle_beam.complete) {
-        const psx = worldToScreenX(cb.startX + dir * p * stepPx);
+        const psx = worldToScreenX(cb.startX + dir * Math.min(dist, p * stepDu));
         const cIdx = Math.min(pillarCuts.length - 1, Math.floor(lAge / 2));
         const pc = pillarCuts[cIdx];
-        drawSubImage(ctx, IMAGES.castle_beam, pc[0], pc[1], pc[2], pc[3], psx - pc[4] / 2, GROUND_Y - pc[5] + 8, pc[4], pc[5]);
+        const pw = pc[4] * zScale;
+        const ph = pc[5] * zScale;
+        drawSubImage(ctx, IMAGES.castle_beam, pc[0], pc[1], pc[2], pc[3], psx - pw / 2, GROUND_Y - ph + 8 * zScale, pw, ph);
       }
     }
   }
@@ -2003,9 +2487,9 @@ function renderCombatFX(ctx, worldToScreenX) {
     if (IMAGES.hit_a && IMAGES.hit_a.complete) {
       const idx = Math.min(hitCuts.length - 1, Math.floor(hs.age / 2));
       const c = hitCuts[idx];
-      drawSubImage(ctx, IMAGES.hit_a, c[0], c[1], c[2], c[3], sx - 33, hs.y - 28, 66, 56);
+      drawSubImage(ctx, IMAGES.hit_a, c[0], c[1], c[2], c[3], sx - 33 * zScale, hs.y - 28 * zScale, 66 * zScale, 56 * zScale);
       if (hs.isCrit) {
-        drawSubImage(ctx, IMAGES.hit_a, 58, 133, 50, 46, sx - 31, hs.y - 38, 62, 58);
+        drawSubImage(ctx, IMAGES.hit_a, 58, 133, 50, 46, sx - 31 * zScale, hs.y - 38 * zScale, 62 * zScale, 58 * zScale);
       }
     }
   }
@@ -2019,64 +2503,73 @@ function renderCombatFX(ctx, worldToScreenX) {
   ];
   for (let i = fxDeathSouls.length - 1; i >= 0; i--) {
     const ds = fxDeathSouls[i];
-    const sx = worldToScreenX(ds.x) + Math.sin((ds.age * Math.PI) / 8.0) * 10;
-    const sy = ds.y - ds.age * 2.5;
+    const sx = worldToScreenX(ds.x) + Math.sin((ds.age * Math.PI) / 8.0) * 10 * zScale;
+    const sy = ds.y - ds.age * 2.5 * zScale;
     if (IMAGES.soul && IMAGES.soul.complete) {
       const c = soulCuts[Math.floor(ds.age / 3) % 4];
       ctx.save();
       if (ds.age > 30) ctx.globalAlpha = Math.max(0, 1 - (ds.age - 30) / 15.0);
-      drawSubImage(ctx, IMAGES.soul, c[0], c[1], c[2], c[3], sx - 29, sy - 34, 58, 68);
+      drawSubImage(ctx, IMAGES.soul, c[0], c[1], c[2], c[3], sx - 29 * zScale, sy - 34 * zScale, 58 * zScale, 68 * zScale);
       ctx.restore();
     }
   }
 
-  // 5. Surge Attack Energy Pillars (烈波)
+  // 5. Surge & Mini-Surge Attack Pillars (Official PONOS skill_volcano / skill_smallvolcano 3-phase skeletal rigs)
   for (let i = fxSurges.length - 1; i >= 0; i--) {
     const s = fxSurges[i];
     const sx = worldToScreenX(s.x);
-    if (sx < -220 || sx > SCREEN_W + 220) continue;
-    const w = s.radius * 2;
-    const h = 360;
-    ctx.save();
-    ctx.globalAlpha = Math.min(1.0, (s.maxLife - s.age) / 8.0);
-    // Outer column
-    ctx.fillStyle = s.team === TEAM_CAT ? "rgba(50, 180, 255, 0.22)" : "rgba(180, 20, 220, 0.22)";
-    ctx.fillRect(sx - w / 2, GROUND_Y - h, w, h);
-    // Inner column
-    ctx.fillStyle = s.team === TEAM_CAT ? "rgba(180, 240, 255, 0.45)" : "rgba(255, 100, 240, 0.45)";
-    ctx.fillRect(sx - w * 0.25, GROUND_Y - h, w * 0.5, h);
-    // Core pillar
-    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-    ctx.fillRect(sx - w * 0.08, GROUND_Y - h, w * 0.16, h);
-    // Ground shock ring
-    const ringR = (s.age % 20) * (s.radius / 20.0);
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.ellipse(sx, GROUND_Y - 10, ringR, ringR * 0.35, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+    if (sx < -260 || sx > SCREEN_W + 260) continue;
+    const delay = s.delay || 15;
+    const endDur = 10;
+    const rigCode = s.isMini
+      ? (s.team === TEAM_ENEMY ? "fx_minisurge_e" : "fx_minisurge")
+      : (s.team === TEAM_ENEMY ? "fx_surge_e" : "fx_surge");
+    if (RIGS[rigCode]) {
+      let animName = "loop";
+      let animFrame = 0;
+      if (s.age < delay) {
+        animName = "start";
+        animFrame = s.age;
+      } else if (s.age < s.maxLife - endDur) {
+        animName = "loop";
+        animFrame = s.age - delay;
+      } else {
+        animName = "end";
+        animFrame = Math.max(0, s.age - (s.maxLife - endDur));
+      }
+      renderSkeletalRig(ctx, rigCode, animName, animFrame, sx, GROUND_Y + 4 * zScale, unitScale, false);
+    }
   }
 
-  // 6. Wave & Warp Block Barrier Ripples
+  // 5b. Explosion 3-Ring Blasts (Official PONOS skill_explosion / skill_explosion_e skeletal rigs)
+  for (let i = fxExplosions.length - 1; i >= 0; i--) {
+    const ex = fxExplosions[i];
+    const sx = worldToScreenX(ex.x);
+    if (sx < -320 || sx > SCREEN_W + 320) continue;
+    const delay = ex.delay || 15;
+    const rigCode = ex.team === TEAM_ENEMY ? "fx_explosion_e" : "fx_explosion";
+    if (RIGS[rigCode]) {
+      const expScale = unitScale;
+      const offsetX = (ex.team === TEAM_ENEMY ? -30 : 30) * expScale;
+      if (ex.age < delay) {
+        const startFrame = Math.min(11, ex.age * (11.0 / Math.max(1, delay)));
+        renderSkeletalRig(ctx, rigCode, "start", startFrame, sx + offsetX, GROUND_Y + 4 * zScale, expScale, false);
+      } else if (ex.age < delay + 34) {
+        const blastFrame = ex.age - delay;
+        renderSkeletalRig(ctx, rigCode, "blast", blastFrame, sx + offsetX, GROUND_Y + 4 * zScale, expScale, false);
+      }
+    }
+  }
+
+  // 6. Wave & Warp Block Barrier Ripples (Official PONOS skill_wave_stop / skill_wave_stop_e skeletal rigs)
   for (let i = fxWaveBlocks.length - 1; i >= 0; i--) {
     const wb = fxWaveBlocks[i];
     const sx = worldToScreenX(wb.x);
-    const prog = wb.age / wb.maxLife;
-    const r = 20 + prog * 50;
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, 1 - prog);
-    ctx.strokeStyle = wb.team === TEAM_CAT ? "#38bdf8" : "#facc15";
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.arc(sx, GROUND_Y - 45, r, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(sx, GROUND_Y - 45, Math.max(1, r - 8), 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
+    if (sx < -200 || sx > SCREEN_W + 200) continue;
+    const rigCode = wb.team === TEAM_ENEMY ? "fx_wavestop_e" : "fx_wavestop";
+    if (RIGS[rigCode]) {
+      renderSkeletalRig(ctx, rigCode, "play", wb.age, sx, GROUND_Y - 40 * zScale, unitScale * 1.2, false);
+    }
   }
 
   // 7. Boss Appearance Shockwaves (from 000_a.png cut 25 or circular fallback)
@@ -2174,6 +2667,34 @@ function renderCombatFX(ctx, worldToScreenX) {
       ctx.fillRect(px - 3, py - 3, 6, 6);
     }
     ctx.restore();
+  }
+}
+
+function drawWorkerCostLeft(ctx, costVal, startX, y, isBright) {
+  const im1 = IMAGES.img001;
+  if (!im1 || !im1.complete || im1.naturalWidth === 0) return;
+  const str = String(costVal);
+  const s = UNIT_RENDER_SCALE; // 1.125 (640p -> 720p)
+  const dw = Math.round(18 * s);
+  const dh = Math.round(26 * s);
+  const step = 15 * s; // native 0x4c1b8c..0x4c1d40: 18px glyph width with -3px kerning
+  let curX = startX;
+  for (let i = 0; i < str.length; i++) {
+    const d = str.charCodeAt(i) - 48;
+    if (d >= 0 && d <= 9) {
+      if (isBright) {
+        drawSubImage(ctx, im1, 41 + d * 20, 148, 18, 26, Math.round(curX), y, dw, dh);
+      } else {
+        drawSubImage(ctx, im1, 25 + d * 20, 176, 18, 26, Math.round(curX), y, dw, dh);
+      }
+      curX += step;
+    }
+  }
+  const yw = Math.round(22 * s);
+  if (isBright) {
+    drawSubImage(ctx, im1, 1, 176, 22, 26, Math.round(curX), y, yw, dh);
+  } else {
+    drawSubImage(ctx, im1, 241, 148, 22, 26, Math.round(curX), y, yw, dh);
   }
 }
 
@@ -2275,33 +2796,47 @@ function renderDeployBar(ctx, myHud) {
   const im2 = IMAGES.img002;
   const blinkPhase = Math.floor(clientTick / 6) % 2 === 1;
 
-  // 1. Left: Official Worker Cat Upgrade Button (16, 586, 168, 112) over bg000.png's natural brown soil
+  // 1. Left: Official Worker Cat Upgrade Button (native 0x4c1990 + img002[5,6,24] 194x121 at 1.125x)
+  const wBtnX = 8;
+  const wBtnY = 584;
+  const wBtnW = Math.round(194 * UNIT_RENDER_SCALE); // 218
+  const wBtnH = Math.round(121 * UNIT_RENDER_SCALE); // 136
   const wMax = myHud.worker_lv >= 8 || myHud.worker_cost === null || myHud.worker_cost <= 0;
   const wCan = !wMax && myHud.money >= myHud.worker_cost;
   if (im2 && im2.complete) {
     if (wCan) {
-      drawSubImage(ctx, im2, blinkPhase ? 197 : 1, 1, 194, 121, 16, 586, 168, 112);
+      drawSubImage(ctx, im2, blinkPhase ? 197 : 1, 1, 194, 121, wBtnX, wBtnY, wBtnW, wBtnH);
     } else if (wMax) {
-      drawSubImage(ctx, im2, 1, 1, 194, 121, 16, 586, 168, 112);
+      drawSubImage(ctx, im2, 1, 1, 194, 121, wBtnX, wBtnY, wBtnW, wBtnH);
     } else {
-      drawSubImage(ctx, im2, 393, 1, 194, 121, 16, 586, 168, 112);
+      drawSubImage(ctx, im2, 393, 1, 194, 121, wBtnX, wBtnY, wBtnW, wBtnH);
     }
   }
   if (im1 && im1.complete) {
     const useBrightLvl = wCan || wMax;
+    const lvX = wBtnX + Math.round(4 * UNIT_RENDER_SCALE);  // 13
+    const lvY = Math.round(510 * UNIT_RENDER_SCALE);         // 574
+    const lvW = Math.round(68 * UNIT_RENDER_SCALE);          // 77
+    const lvH = Math.round(27 * UNIT_RENDER_SCALE);          // 30
+    const dgtX = wBtnX + Math.round(73 * UNIT_RENDER_SCALE); // 90
+    const dgtW = Math.round(18 * UNIT_RENDER_SCALE);         // 20
+    const lv = Math.min(8, Math.max(1, myHud.worker_lv));
     if (useBrightLvl) {
-      drawSubImage(ctx, im1, 1, 89, 68, 27, 32, 598, 52, 20);
-      const lv = Math.min(8, Math.max(1, myHud.worker_lv));
-      drawSubImage(ctx, im1, 75 + lv * 20, 89, 18, 27, 86, 598, 14, 20);
+      drawSubImage(ctx, im1, 1, 89, 68, 27, lvX, lvY, lvW, lvH);
+      drawSubImage(ctx, im1, 75 + lv * 20, 89, 18, 27, dgtX, lvY, dgtW, lvH);
     } else {
-      drawSubImage(ctx, im1, 21, 118, 68, 27, 32, 598, 52, 20);
-      const lv = Math.min(7, Math.max(1, myHud.worker_lv));
-      drawSubImage(ctx, im1, 95 + lv * 20, 118, 18, 27, 86, 598, 14, 20);
+      drawSubImage(ctx, im1, 21, 118, 68, 27, lvX, lvY, lvW, lvH);
+      if (lv === 8) {
+        drawSubImage(ctx, im1, 1, 147, 18, 27, dgtX, lvY, dgtW, lvH);
+      } else {
+        drawSubImage(ctx, im1, 95 + lv * 20, 118, 18, 27, dgtX, lvY, dgtW, lvH);
+      }
     }
+    const costY = wBtnY + Math.round(92 * UNIT_RENDER_SCALE); // 688
     if (wMax) {
-      drawSubImage(ctx, im1, 449, 45, 62, 26, 34, 672, 46, 20);
+      drawSubImage(ctx, im1, 449, 45, 62, 26, lvX, costY, Math.round(62 * UNIT_RENDER_SCALE), Math.round(26 * UNIT_RENDER_SCALE));
     } else {
-      drawSmallCostDigits(ctx, myHud.worker_cost, 97, 672, wCan);
+      drawWorkerCostLeft(ctx, myHud.worker_cost, lvX, costY, wCan);
     }
   }
 
@@ -2418,10 +2953,10 @@ function renderDeployBar(ctx, myHud) {
       drawSubImage(ctx, im2, blinkPhase ? 312 : 185, 260, 125, 55, 1124, 644, 112, 48);
     } else {
       drawSubImage(ctx, im2, 393, 124, 194, 130, 1096, 586, 168, 112);
-      const stepCount = Math.floor((myHud.cannon_charge / Math.max(1, myHud.cannon_max)) * 10);
-      if (stepCount > 0) {
-        const srcH = Math.round((130 * stepCount) / 10.0);
-        const dstH = Math.round((112 * stepCount) / 10.0);
+      const cRatio = Math.max(0, Math.min(1, myHud.cannon_charge / Math.max(1, myHud.cannon_max)));
+      if (cRatio > 0.01) {
+        const srcH = Math.max(1, Math.round(130 * cRatio));
+        const dstH = Math.max(1, Math.round(112 * cRatio));
         drawSubImage(ctx, im2, 1, 124 + (130 - srcH), 194, srcH, 1096, 586 + (112 - dstH), 168, dstH);
       }
     }
@@ -2515,7 +3050,7 @@ function setupBattleControls() {
 
     if (my >= 522) {
       // Deploy Bar Clicks (Worker Cat, 10-Card 2-Row Formation Grid, Cat Cannon)
-      if (mx >= 16 && mx <= 184 && my >= 586 && my <= 698) {
+      if (mx >= 8 && mx <= 226 && my >= 584 && my <= 720) {
         sendRoomAction("UPGRADE_WORKER");
       } else if (mx >= 1096 && mx <= 1264 && my >= 586 && my <= 698) {
         sendRoomAction("FIRE_CANNON");
@@ -2554,6 +3089,20 @@ function setupBattleControls() {
   window.addEventListener("mouseup", () => {
     isDraggingCam = false;
   });
+
+  canvas.addEventListener("wheel", e => {
+    if (!roomState || e.deltaY === 0) return;
+    e.preventDefault();
+    const stageLen = roomState.length || 3200;
+    const { minZoom, maxZoom } = getBattleZoomBounds(stageLen);
+    const oldWorldScale = BATTLE_WORLD_SCALE * battleZoom;
+    const centerWorldX = (cameraX + SCREEN_W * 0.5) / oldWorldScale;
+    const step = e.deltaY > 0 ? -0.025 : 0.025;
+    battleZoom = Math.max(minZoom, Math.min(maxZoom, battleZoom + step));
+    const newWorldScale = BATTLE_WORLD_SCALE * battleZoom;
+    cameraX = centerWorldX * newWorldScale - SCREEN_W * 0.5;
+    manualCameraHold = 90;
+  }, { passive: false });
 
   window.addEventListener("keydown", e => {
     if (document.activeElement && ["INPUT", "SELECT", "TEXTAREA"].includes(document.activeElement.tagName)) {
@@ -2597,21 +3146,25 @@ function renderLoop(now = performance.now()) {
   const df = dt * 30.0 * speedMult;
   previewFrame += dt * 30.0;
 
-  if (roomState && roomState.status === "PLAYING" && !roomState.game_over && Array.isArray(roomState.units)) {
+  const isOneshot = new URLSearchParams(window.location.search).get("oneshot") === "1";
+  if (!isOneshot && roomState && roomState.status === "PLAYING" && !roomState.game_over && Array.isArray(roomState.units)) {
     roomState.units.forEach(u => {
       const vis = unitVisualState.get(u.id);
       if (!vis) return;
       if (!(u.frz > 0 && u.anim !== "kb")) {
-        vis.localAf += df;
+        const serverAf = vis.serverAf !== undefined ? vis.serverAf : u.af;
+        let maxSubAf = serverAf + 0.95;
         if (u.anim === "attack") {
           const rigObj = RIGS[u.rig];
           const maxAtkF = (rigObj && rigObj.anims && rigObj.anims.attack && rigObj.anims.attack.max_frame) || 30;
-          if (vis.localAf > maxAtkF) vis.localAf = maxAtkF;
+          maxSubAf = Math.min(maxAtkF, maxSubAf);
         }
+        vis.localAf = Math.min(maxSubAf, Math.max(serverAf, vis.localAf + df));
       }
       if (u.anim === "kb") {
-        // Zero lag during knockback: follow server's exact displacement immediately to eliminate stutter
+        // Zero lag during knockback: follow server's exact horizontal & vertical bounce immediately
         vis.renderX = vis.targetX;
+        vis.renderY = vis.targetY;
       } else {
         const errX = vis.targetX - vis.renderX;
         const followFactor = 1.0 - Math.exp(-35.0 * dt);
@@ -2619,6 +3172,7 @@ function renderLoop(now = performance.now()) {
         if (Math.abs(errX) > 120.0) {
           vis.renderX = vis.targetX;
         }
+        vis.renderY = vis.targetY;
       }
     });
   }
@@ -2633,8 +3187,8 @@ function renderLoop(now = performance.now()) {
     }
   }
 
-  const lobbySec = document.getElementById("view-lobby");
-  if (lobbySec && lobbySec.classList.contains("active")) {
+  const formSec = document.getElementById("view-formation");
+  if (formSec && formSec.classList.contains("active")) {
     renderFormationPreview();
   }
   const battleSec = document.getElementById("view-battle");

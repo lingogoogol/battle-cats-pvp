@@ -6,6 +6,8 @@ and Level-scaled combat specifications from SaveManager.
 
 from typing import List, Dict, Any, Optional, Union
 from ..core.unit_data import CAT_REGISTRY
+from ..core.official_data_parser import OfficialDataParser, compute_ponos_level_stat
+from ..core.talents import apply_talents_to_spec
 from ..core.damage_engine import NativeDamageEngine
 
 _CAT_IDX_TO_KEY = {
@@ -22,6 +24,7 @@ class CatDeployer:
         self.registry = registry if registry is not None else CAT_REGISTRY
         self.deck_keys = [_CAT_IDX_TO_KEY.get(k, k) if isinstance(k, int) and k in _CAT_IDX_TO_KEY and self.registry is CAT_REGISTRY else k for k in deck_keys]
         self.cat_levels = cat_levels or {}
+        self.talent_overrides: Dict[str, List[int]] = {}  # key -> list of disabled talent indices
 
         # Track cooldown frames for each deck slot
         self.cooldowns = [0] * len(self.deck_keys)
@@ -91,35 +94,46 @@ class CatDeployer:
         if base_spec is None:
             return None
 
-        # Calculate authentic Ponos piecewise level scaling (Lv 1-20: +0.20/lv; Lv 21-50: +0.10/lv or +0.05/lv)
+        # Authentic PONOS unitlevel.csv growth curve matching ARM64 0x9632d8 / 0x9645a8
         cat_id_str = str(base_spec.get("id", key))
-        default_lv = self.cat_levels.get("__default__", 1)
-        level = max(1, self.cat_levels.get(cat_id_str, self.cat_levels.get(str(key), default_lv)))
-        if level <= 20:
-            mult = 1.0 + 0.20 * (level - 1)
-        elif level <= 50:
-            is_crazed = "crazed" in str(key).lower() or "狂亂" in base_spec.get("name", "")
-            growth = 0.05 if is_crazed else 0.10
-            mult = 4.8 + growth * (level - 20)
+        if self.cat_levels.get("__max__"):
+            level = max(1, int(base_spec.get("max_level", 50)))
         else:
+            default_lv = self.cat_levels.get("__default__", 1)
+            level = max(1, int(self.cat_levels.get(cat_id_str, self.cat_levels.get(str(key), default_lv))))
+        brackets = base_spec.get("level_brackets")
+        if not brackets:
             is_crazed = "crazed" in str(key).lower() or "狂亂" in base_spec.get("name", "")
-            growth = 0.05 if is_crazed else 0.10
-            mult = 4.8 + growth * 30 + (growth * 0.5) * (level - 50)
+            if is_crazed:
+                brackets = [20, 20, 10, 10, 10, 10, 10, 10, 10, 10]
+            else:
+                brackets = OfficialDataParser.get_instance().get_unit_level_brackets(base_spec.get("id"))
 
-        permille = int(round(mult * 1000))
         scaled_spec = dict(base_spec)
         scaled_spec["level"] = level
-        scaled_spec["hp"] = max(1, NativeDamageEngine.calculate_damage(base_spec["hp"], permille))
-        scaled_spec["attack_power"] = max(1, NativeDamageEngine.calculate_damage(base_spec["attack_power"], permille))
-        if base_spec.get("attack_hits"):
-            scaled_hits = []
-            for h in base_spec["attack_hits"]:
-                sh = dict(h)
-                sh["damage"] = max(1, NativeDamageEngine.calculate_damage(h["damage"], permille))
-                scaled_hits.append(sh)
+        scaled_spec["hp"] = compute_ponos_level_stat(base_spec["hp"], level, brackets)
+        scaled_hits = []
+        for h in base_spec.get("attack_hits") or []:
+            hc = dict(h)
+            hc["damage"] = compute_ponos_level_stat(h.get("damage", 1), level, brackets)
+            scaled_hits.append(hc)
+        if scaled_hits:
             scaled_spec["attack_hits"] = scaled_hits
-            scaled_spec["attack_power"] = sum(sh["damage"] for sh in scaled_hits)
-        cost = base_spec.get("cost", max(50, base_spec.get("money_drop", 100)))
+            scaled_spec["attack_power"] = sum(h["damage"] for h in scaled_hits)
+        else:
+            scaled_spec["attack_power"] = compute_ponos_level_stat(base_spec["attack_power"], level, brackets)
+
+        # Apply all enabled official PONOS Talents + Standard 1.5x PvP/Ch.2+ Cost when in Web PvP MAX mode
+        if self.cat_levels.get("__max__"):
+            if scaled_spec.get("talents"):
+                disabled_list = self.talent_overrides.get(str(key)) or self.talent_overrides.get(cat_id_str) or []
+                scaled_spec = apply_talents_to_spec(scaled_spec, set(int(i) for i in disabled_list))
+                if idx < len(self.max_cooldowns):
+                    self.max_cooldowns[idx] = max(60, int(scaled_spec.get("cooldown_frames", self.max_cooldowns[idx])))
+            if not scaled_spec.get("is_custom", False):
+                scaled_spec["cost"] = max(15, int(round(scaled_spec.get("cost", 50) * 1.5)))
+
+        cost = scaled_spec.get("cost", max(50, scaled_spec.get("money_drop", 100)))
 
         return {
             "key": key if not isinstance(key, dict) else base_spec.get("id", "custom"),

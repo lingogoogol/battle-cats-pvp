@@ -14,7 +14,7 @@ import os
 import math
 import pygame
 from typing import Dict, List, Tuple, Optional, Any
-from ..core.constants import GROUND_Y, TEAM_CAT, TEAM_ENEMY, KNOCKBACK_FRAMES_DEFAULT
+from ..core.constants import GROUND_Y, TEAM_CAT, TEAM_ENEMY, KNOCKBACK_FRAMES_DEFAULT, UNIT_RENDER_SCALE
 from ..simulation.battle_sim import SimUnit
 from ..anim_engine.ponos_anim_player import PonosAnimationPlayer
 
@@ -117,7 +117,7 @@ class UnitSpriteManager:
     def enemy186_player(self) -> Optional[PonosAnimationPlayer]:
         return self.skeletal_players.get("enemy_186")
 
-    def _bake_skeletal_frames(self, player: PonosAnimationPlayer, flip_h: bool, scale: float = 0.65) -> Dict[str, Any]:
+    def _bake_skeletal_frames(self, player: PonosAnimationPlayer, flip_h: bool, scale: float = UNIT_RENDER_SCALE) -> Dict[str, Any]:
         """Pre-renders representative frames for legacy inspection tests while live rendering uses real-time PonosAnimationPlayer."""
         out: Dict[str, Any] = {"walk": [], "attack": [], "kb": [], "walk_rate": 4, "scale": scale, "player": player}
         for anim_key, sample_frames in [("walk", [0, 4, 8, 12]), ("attack", [0, 4, 8, 12]), ("kb", [0])]:
@@ -136,7 +136,7 @@ class UnitSpriteManager:
             code = f"{cid:03d}_f"
             p = self.skeletal_players.get(code)
             if p is not None:
-                self.cat_sprites[cid] = self._bake_skeletal_frames(p, flip_h=False, scale=0.65)
+                self.cat_sprites[cid] = self._bake_skeletal_frames(p, flip_h=False, scale=UNIT_RENDER_SCALE)
 
     def _init_all_enemies(self):
         enemy_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 18, 21, 22]
@@ -144,7 +144,7 @@ class UnitSpriteManager:
             code = f"{eid:03d}_e"
             p = self.skeletal_players.get(code)
             if p is not None:
-                self.enemy_sprites[eid] = self._bake_skeletal_frames(p, flip_h=False, scale=0.65)
+                self.enemy_sprites[eid] = self._bake_skeletal_frames(p, flip_h=False, scale=UNIT_RENDER_SCALE)
 
     def trigger_hit_flash(self, unit_id: str, frames: int = 3):
         self.hit_flash_timers[unit_id] = frames
@@ -227,11 +227,11 @@ class UnitSpriteManager:
                 skel.set_animation("walk")
                 skel.current_frame = float(getattr(unit, "anim_frame", frame))
 
-            # Scale factor: all official models use uniform 0.62 world scale so native .mamodel bone scales govern 100% of unit proportions
-            base_scale = unit.spec.get("render_scale", 0.62)
+            # Scale factor: all official models use uniform UNIT_RENDER_SCALE (1.125 = 720/640) matching native .mamodel proportions
+            base_scale = unit.spec.get("render_scale", UNIT_RENDER_SCALE)
             z_off = (unit.slot % 5) * 2 - 4
-            visual_sx = sx + (-48 if unit.team == TEAM_CAT else 48)
-            skel.render(surface, visual_sx, sy + 4 + z_off, scale=base_scale, flip_h=flip_h)
+            # Unit root aligns 1:1 with pos_x and CheckRange hitboxes (matching web/app.js)
+            skel.render(surface, sx, sy + 4 + z_off, scale=base_scale, flip_h=flip_h)
             return
 
     def _resolve_cat_id(self, unit: SimUnit) -> int:

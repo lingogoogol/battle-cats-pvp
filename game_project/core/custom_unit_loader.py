@@ -8,6 +8,7 @@ for 1P Battle or 2-Player Symmetric PvP.
 import os
 import json
 from typing import List, Dict, Any, Optional
+from .constants import UNIT_RENDER_SCALE
 from .unit_data import register_custom_unit, CAT_REGISTRY, ENEMY_REGISTRY
 from ..render.unit_sprite_manager import UnitSpriteManager
 
@@ -64,7 +65,7 @@ class CustomUnitLoader:
             "target_traits": list(data.get("target_traits", [])),
             "abilities": abilities,
             "is_custom": True,
-            "render_scale": float(data.get("scale", data.get("render_scale", 0.65))),
+            "render_scale": float(data.get("scale", data.get("render_scale", UNIT_RENDER_SCALE))),
             "tint_rgb": data.get("tint_rgb", None),
         }
         register_custom_unit(key, spec_dict, as_cat=True, as_enemy=True)

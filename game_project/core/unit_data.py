@@ -9,6 +9,7 @@ Zero synthetic or guessed values.
 """
 
 from typing import Dict, Any, Union, Optional
+from .constants import UNIT_RENDER_SCALE
 from .official_data_parser import OfficialDataParser, CatData, EnemyData, StageData
 
 _parser = OfficialDataParser.get_instance()
@@ -55,6 +56,15 @@ for u_key, cat_data in _parser.get_expanded_cats().items():
     CAT_REGISTRY[spec["id"]] = spec
     CAT_REGISTRY[spec["texture_code"]] = spec
     OFFICIAL_CAT_KEYS.append(u_key)
+
+# 1b. All Restored Final-Form Official Cats (highest available form u > s > c > f with authentic max_level)
+FINAL_CAT_KEYS = []
+for u_key, cat_data in _parser.get_final_form_cats().items():
+    spec = cat_data.to_dict()
+    spec["key"] = u_key
+    CAT_REGISTRY[u_key] = spec
+    CAT_REGISTRY[spec["texture_code"]] = spec
+    FINAL_CAT_KEYS.append(u_key)
 
 # 2. Official Enemies (Loaded dynamically from t_unit.csv)
 ENEMY_REGISTRY: Dict[Union[str, int], Dict[str, Any]] = {}
@@ -114,8 +124,10 @@ def register_custom_unit(unit_key: str, spec: Dict[str, Any], as_cat: bool = Tru
         "abilities": dict(spec.get("abilities", {})),
         "custom_rig": spec.get("custom_rig", None),
         "is_custom": bool(spec.get("is_custom", True)),
-        "render_scale": float(spec.get("render_scale", spec.get("scale", 0.62))),
+        "render_scale": float(spec.get("render_scale", spec.get("scale", UNIT_RENDER_SCALE))),
         "tint_rgb": spec.get("tint_rgb", None),
+        "hitbox_front": int(spec.get("hitbox_front", 0)),
+        "hitbox_back": int(spec.get("hitbox_back", 320)),
     }
     if as_cat:
         CAT_REGISTRY[unit_key] = normalized

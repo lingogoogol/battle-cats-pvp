@@ -1,0 +1,514 @@
+0x00ac3350 (Ghidra 0x00bc3350) | count= 136 | FUNC
+0x00ac3330 (Ghidra 0x00bc3330) | count= 103 | FUNC
+0x0034c16c (Ghidra 0x0044c16c) | count=  49 | FUNC
+0x0033ea60 (Ghidra 0x0043ea60) | count=  46 | FUNC
+0x006fd748 (Ghidra 0x007fd748) | count=  43 | FUNC
+0x0030a8c0 (Ghidra 0x0040a8c0) | count=  40 | FUNC
+0x00958ba4 (Ghidra 0x00a58ba4) | count=  40 | ACCESSOR off=0x8390c (slot*1000,team*51000)
+0x007e3f14 (Ghidra 0x008e3f14) | count=  35 | FUNC
+0x006ac230 (Ghidra 0x007ac230) | count=  29 | FUNC
+0x0034003c (Ghidra 0x0044003c) | count=  28 | FUNC
+0x0034e35c (Ghidra 0x0044e35c) | count=  26 | FUNC
+0x006a95b8 (Ghidra 0x007a95b8) | count=  26 | FUNC
+0x00958be4 (Ghidra 0x00a58be4) | count=  25 | ACCESSOR off=0x83bf0,0x83bf0,0x83930,0x83c3c (slot*1000,team*0x1f0,team*51000)
+0x004ab154 (Ghidra 0x005ab154) | count=  22 | FUNC
+0x009590bc (Ghidra 0x00a590bc) | count=  22 | ACCESSOR off=0x83910 (slot*1000,team*51000)
+0x0095919c (Ghidra 0x00a5919c) | count=  19 | ACCESSOR off=0x83914 (slot*1000,team*51000)
+0x004df9b8 (Ghidra 0x005df9b8) | count=  19 | FUNC
+0x006d78f4 (Ghidra 0x007d78f4) | count=  19 | FUNC
+0x00ac5cc0 (Ghidra 0x00bc5cc0) | count=  18 | FUNC
+0x004aad10 (Ghidra 0x005aad10) | count=  16 | FUNC
+0x006ac380 (Ghidra 0x007ac380) | count=  16 | FUNC
+0x00959c68 (Ghidra 0x00a59c68) | count=  16 | ACCESSOR off=0x83ad4 (slot*1000,team*51000)
+0x009590fc (Ghidra 0x00a590fc) | count=  16 | ACCESSOR off=0x83910 (slot*1000,team*51000)
+0x008b95b4 (Ghidra 0x009b95b4) | count=  16 | FUNC
+0x00abf1b0 (Ghidra 0x00bbf1b0) | count=  15 | FUNC
+0x0095a220 (Ghidra 0x00a5a220) | count=  15 | ACCESSOR off=0x83928 (slot*1000,team*51000)
+0x0088aef0 (Ghidra 0x0098aef0) | count=  14 | FUNC
+0x009578c8 (Ghidra 0x00a578c8) | count=  14 | ACCESSOR off=0x8392c (team*51000)
+0x005ce084 (Ghidra 0x006ce084) | count=  13 | FUNC
+0x009608a8 (Ghidra 0x00a608a8) | count=  12 | ACCESSOR off=0x839fc (slot*1000,team*51000)
+0x004af784 (Ghidra 0x005af784) | count=  12 | FUNC
+0x008cd640 (Ghidra 0x009cd640) | count=  12 | FUNC
+0x004b2234 (Ghidra 0x005b2234) | count=  12 | FUNC
+0x00957934 (Ghidra 0x00a57934) | count=  12 | ACCESSOR off=0x83930 (team*51000)
+0x0034e364 (Ghidra 0x0044e364) | count=  10 | FUNC
+0x00707844 (Ghidra 0x00807844) | count=  10 | FUNC
+0x0090b124 (Ghidra 0x00a0b124) | count=  10 | FUNC
+0x00961808 (Ghidra 0x00a61808) | count=  10 | ACCESSOR off=0x83c04 (slot*1000,team*51000)
+0x00960620 (Ghidra 0x00a60620) | count=  10 | ACCESSOR off=0x83b14 (slot*1000,team*51000)
+0x00961434 (Ghidra 0x00a61434) | count=  10 | ACCESSOR off=0x83908 (slot*1000,team*51000)
+0x0030cb78 (Ghidra 0x0040cb78) | count=   9 | FUNC
+0x009603d4 (Ghidra 0x00a603d4) | count=   9 | ACCESSOR off=0x83954 (slot*1000,team*51000)
+0x009579a0 (Ghidra 0x00a579a0) | count=   9 | ACCESSOR off=0x83930 (team*51000)
+0x00960aa0 (Ghidra 0x00a60aa0) | count=   8 | ACCESSOR off=0x83a00 (slot*1000,team*51000)
+0x00ac3a90 (Ghidra 0x00bc3a90) | count=   8 | FUNC
+0x0048c04c (Ghidra 0x0058c04c) | count=   8 | FUNC
+0x00958874 (Ghidra 0x00a58874) | count=   8 | ACCESSOR off=0x83908,0x83908 (slot*1000,team*51000)
+0x00958934 (Ghidra 0x00a58934) | count=   8 | ACCESSOR off=0x83908 (slot*1000,team*51000)
+0x008d0178 (Ghidra 0x009d0178) | count=   8 | FUNC
+0x0033ed6c (Ghidra 0x0043ed6c) | count=   8 | FUNC
+0x004b21ec (Ghidra 0x005b21ec) | count=   8 | FUNC
+0x00959148 (Ghidra 0x00a59148) | count=   8 | ACCESSOR off=0x83910 (slot*1000,team*51000)
+0x00958df4 (Ghidra 0x00a58df4) | count=   7 | ACCESSOR off=0x8390c,0x8390c,0x8390c,0x8390c,0x8390c,0x8390c (slot*1000,team*51000)
+0x004c8c40 (Ghidra 0x005c8c40) | count=   7 | FUNC
+0x0033dc7c (Ghidra 0x0043dc7c) | count=   7 | FUNC
+0x006ac5b8 (Ghidra 0x007ac5b8) | count=   7 | FUNC
+0x006abd78 (Ghidra 0x007abd78) | count=   7 | FUNC
+0x004aacc8 (Ghidra 0x005aacc8) | count=   7 | FUNC
+0x0096177c (Ghidra 0x00a6177c) | count=   7 | ACCESSOR off=0x83c00 (slot*1000,team*51000)
+0x009595d0 (Ghidra 0x00a595d0) | count=   7 | ACCESSOR off=0x83980,0x83914,0x900b8,0x9004c (slot*1000)
+0x0095967c (Ghidra 0x00a5967c) | count=   7 | ACCESSOR off=0x83980,0x83914,0x900b8,0x9004c,0x83980,0x83914 (slot*1000,team*51000)
+0x005df080 (Ghidra 0x006df080) | count=   7 | FUNC
+0x003400b4 (Ghidra 0x004400b4) | count=   6 | FUNC
+0x00777c64 (Ghidra 0x00877c64) | count=   6 | FUNC
+0x0034fe48 (Ghidra 0x0044fe48) | count=   6 | FUNC
+0x0034e014 (Ghidra 0x0044e014) | count=   6 | FUNC
+0x00341cdc (Ghidra 0x00441cdc) | count=   6 | FUNC
+0x005e3770 (Ghidra 0x006e3770) | count=   6 | FUNC
+0x00ac5cd0 (Ghidra 0x00bc5cd0) | count=   6 | FUNC
+0x00490ae0 (Ghidra 0x00590ae0) | count=   6 | FUNC
+0x00490b2c (Ghidra 0x00590b2c) | count=   6 | FUNC
+0x00958d4c (Ghidra 0x00a58d4c) | count=   6 | ACCESSOR off=0x83930 (slot*1000,team*51000)
+0x0095a494 (Ghidra 0x00a5a494) | count=   6 | ACCESSOR off=0x8395c,0x83aec,0x83af0 (slot*1000,team*51000)
+0x00705fcc (Ghidra 0x00805fcc) | count=   6 | FUNC
+0x009578fc (Ghidra 0x00a578fc) | count=   6 | ACCESSOR off=0x8392c (team*51000)
+0x0095a068 (Ghidra 0x00a5a068) | count=   6 | ACCESSOR off=0x83cc8 (slot*1000,team*51000)
+0x005ce4cc (Ghidra 0x006ce4cc) | count=   5 | FUNC
+0x00960c98 (Ghidra 0x00a60c98) | count=   5 | ACCESSOR off=0x83a34 (slot*1000,team*51000)
+0x006acdd4 (Ghidra 0x007acdd4) | count=   5 | FUNC
+0x008ae2ac (Ghidra 0x009ae2ac) | count=   5 | FUNC
+0x008ae1e4 (Ghidra 0x009ae1e4) | count=   5 | FUNC
+0x004abf1c (Ghidra 0x005abf1c) | count=   5 | FUNC
+0x009597f0 (Ghidra 0x00a597f0) | count=   5 | ACCESSOR off=0x83950 (slot*1000,team*51000)
+0x0095a194 (Ghidra 0x00a5a194) | count=   5 | ACCESSOR off=0x83924 (slot*1000,team*51000)
+0x00960414 (Ghidra 0x00a60414) | count=   5 | ACCESSOR off=0x83954,0x83b90 (slot*1000,team*51000)
+0x00957968 (Ghidra 0x00a57968) | count=   5 | ACCESSOR off=0x83930 (team*51000)
+0x004ab37c (Ghidra 0x005ab37c) | count=   4 | FUNC
+0x005d477c (Ghidra 0x006d477c) | count=   4 | FUNC
+0x0095b2b4 (Ghidra 0x00a5b2b4) | count=   4 | ACCESSOR off=0x83b60 (slot*1000,team*51000)
+0x005da618 (Ghidra 0x006da618) | count=   4 | FUNC
+0x004c8c54 (Ghidra 0x005c8c54) | count=   4 | FUNC
+0x0033ecf8 (Ghidra 0x0043ecf8) | count=   4 | FUNC
+0x004c3ee4 (Ghidra 0x005c3ee4) | count=   4 | FUNC
+0x0033ed84 (Ghidra 0x0043ed84) | count=   4 | FUNC
+0x005d3c94 (Ghidra 0x006d3c94) | count=   4 | FUNC
+0x009206ac (Ghidra 0x00a206ac) | count=   4 | FUNC
+0x00ac35f0 (Ghidra 0x00bc35f0) | count=   4 | FUNC
+0x0090a85c (Ghidra 0x00a0a85c) | count=   4 | FUNC
+0x005efac4 (Ghidra 0x006efac4) | count=   4 | FUNC
+0x0087a5e0 (Ghidra 0x0097a5e0) | count=   4 | FUNC
+0x00961848 (Ghidra 0x00a61848) | count=   4 | ACCESSOR off=0x83c04 (slot*1000,team*51000)
+0x00959560 (Ghidra 0x00a59560) | count=   4 | ACCESSOR off=0x83a08 (slot*1000,team*0x1f0,team*51000)
+0x0095b960 (Ghidra 0x00a5b960) | count=   4 | ACCESSOR off=0x839c4 (slot*1000,team*0x1f0,team*51000)
+0x00961e14 (Ghidra 0x00a61e14) | count=   4 | ACCESSOR off=0x83a8c (slot*1000,team*0x1f0,team*51000)
+0x0095ac18 (Ghidra 0x00a5ac18) | count=   4 | ACCESSOR off=0x83b60,0x83b64,0x83948,0x8394c (slot*1000,team*0x1f0,team*51000)
+0x009618d4 (Ghidra 0x00a618d4) | count=   4 | ACCESSOR off=0x83c08 (slot*1000,team*51000)
+0x0095fe34 (Ghidra 0x00a5fe34) | count=   4 | ACCESSOR off=0x83b10 (slot*1000,team*51000)
+0x0095a97c (Ghidra 0x00a5a97c) | count=   4 | ACCESSOR off=0x83ca8 (slot*1000,team*51000)
+0x008cbcc8 (Ghidra 0x009cbcc8) | count=   4 | FUNC
+0x008cbca8 (Ghidra 0x009cbca8) | count=   4 | FUNC
+0x0095a260 (Ghidra 0x00a5a260) | count=   4 | ACCESSOR off=0x83928 (slot*1000,team*51000)
+0x009606f4 (Ghidra 0x00a606f4) | count=   4 | ACCESSOR off=0x839a0 (slot*1000,team*51000)
+0x004aa6cc (Ghidra 0x005aa6cc) | count=   4 | FUNC
+0x005d4f44 (Ghidra 0x006d4f44) | count=   4 | FUNC
+0x0096081c (Ghidra 0x00a6081c) | count=   4 | ACCESSOR off=0x83c6c (slot*1000,team*51000)
+0x00959eb4 (Ghidra 0x00a59eb4) | count=   4 | ACCESSOR off=0x83b04 (slot*1000,team*51000)
+0x0095d4f4 (Ghidra 0x00a5d4f4) | count=   4 | ACCESSOR off=0x83bf8 (slot*1000,team*51000)
+0x004b1be4 (Ghidra 0x005b1be4) | count=   4 | FUNC
+0x0047a024 (Ghidra 0x0057a024) | count=   3 | FUNC
+0x005e31e0 (Ghidra 0x006e31e0) | count=   3 | FUNC
+0x00961648 (Ghidra 0x00a61648) | count=   3 | ACCESSOR off=0x83bac (slot*1000,team*51000)
+0x0033ec24 (Ghidra 0x0043ec24) | count=   3 | FUNC
+0x0030fc1c (Ghidra 0x0040fc1c) | count=   3 | FUNC
+0x004b095c (Ghidra 0x005b095c) | count=   3 | FUNC
+0x0095f6cc (Ghidra 0x00a5f6cc) | count=   3 | ACCESSOR off=0x83c70 (slot*1000,team*0x1f0,team*51000)
+0x00ac32f0 (Ghidra 0x00bc32f0) | count=   3 | FUNC
+0x00ac32d0 (Ghidra 0x00bc32d0) | count=   3 | FUNC
+0x00ac3310 (Ghidra 0x00bc3310) | count=   3 | FUNC
+0x0076f220 (Ghidra 0x0086f220) | count=   3 | FUNC
+0x00ac3320 (Ghidra 0x00bc3320) | count=   3 | FUNC
+0x00316d84 (Ghidra 0x00416d84) | count=   3 | FUNC
+0x00920824 (Ghidra 0x00a20824) | count=   3 | FUNC
+0x0095fc78 (Ghidra 0x00a5fc78) | count=   3 | ACCESSOR off=0x83ac4 (slot*1000,team*51000)
+0x008d095c (Ghidra 0x009d095c) | count=   3 | FUNC
+0x006b0ec0 (Ghidra 0x007b0ec0) | count=   3 | FUNC
+0x008cdc30 (Ghidra 0x009cdc30) | count=   3 | FUNC
+0x005e437c (Ghidra 0x006e437c) | count=   3 | FUNC
+0x007b18c4 (Ghidra 0x008b18c4) | count=   3 | FUNC
+0x00551898 (Ghidra 0x00651898) | count=   3 | FUNC
+0x0055b92c (Ghidra 0x0065b92c) | count=   3 | FUNC
+0x004c14c8 (Ghidra 0x005c14c8) | count=   3 | FUNC
+0x004d0ad4 (Ghidra 0x005d0ad4) | count=   3 | FUNC
+0x004d0b20 (Ghidra 0x005d0b20) | count=   3 | FUNC
+0x00959a70 (Ghidra 0x00a59a70) | count=   3 | ACCESSOR off=0x83a0c (slot*1000,team*51000)
+0x0095c5f4 (Ghidra 0x00a5c5f4) | count=   3 | ACCESSOR off=0x839ec (slot*1000,team*0x1f0,team*51000)
+0x004ace18 (Ghidra 0x005ace18) | count=   3 | FUNC
+0x004ace98 (Ghidra 0x005ace98) | count=   3 | FUNC
+0x0033f7ec (Ghidra 0x0043f7ec) | count=   3 | FUNC
+0x00506b54 (Ghidra 0x00606b54) | count=   3 | FUNC
+0x004af72c (Ghidra 0x005af72c) | count=   3 | FUNC
+0x00961140 (Ghidra 0x00a61140) | count=   3 | ACCESSOR off=0x83b1c (slot*1000,team*51000)
+0x00961894 (Ghidra 0x00a61894) | count=   3 | ACCESSOR off=0x83c08 (slot*1000,team*51000)
+0x009617bc (Ghidra 0x00a617bc) | count=   3 | ACCESSOR off=0x83c00 (slot*1000,team*51000)
+0x00961d74 (Ghidra 0x00a61d74) | count=   3 | ACCESSOR off=0x83ce8 (slot*1000,team*51000)
+0x0096073c (Ghidra 0x00a6073c) | count=   3 | ACCESSOR off=0x839a0 (slot*1000,team*51000)
+0x009614dc (Ghidra 0x00a614dc) | count=   3 | ACCESSOR off=0x83ba0 (slot*1000,team*51000)
+0x00961730 (Ghidra 0x00a61730) | count=   3 | ACCESSOR off=0x83bbc (slot*1000,team*51000)
+0x00961c08 (Ghidra 0x00a61c08) | count=   3 | ACCESSOR off=0x83c74 (slot*1000,team*51000)
+0x0095fec0 (Ghidra 0x00a5fec0) | count=   3 | ACCESSOR off=0x83be8 (slot*1000,team*51000)
+0x005ee0f4 (Ghidra 0x006ee0f4) | count=   3 | FUNC
+0x0047aa0c (Ghidra 0x0057aa0c) | count=   3 | FUNC
+0x00959228 (Ghidra 0x00a59228) | count=   3 | ACCESSOR off=0x83914 (slot*1000,team*51000)
+0x0095c7b4 (Ghidra 0x00a5c7b4) | count=   3 | ACCESSOR off=0x83ca4 (slot*1000,team*0x1f0,team*51000)
+0x00962da4 (Ghidra 0x00a62da4) | count=   3 | ACCESSOR off=0x83cbc (slot*1000,team*51000)
+0x004ab0a8 (Ghidra 0x005ab0a8) | count=   3 | FUNC
+0x00546668 (Ghidra 0x00646668) | count=   3 | FUNC
+0x004b2884 (Ghidra 0x005b2884) | count=   2 | FUNC
+0x00533678 (Ghidra 0x00633678) | count=   2 | FUNC
+0x005335e0 (Ghidra 0x006335e0) | count=   2 | FUNC
+0x00961528 (Ghidra 0x00a61528) | count=   2 | ACCESSOR off=0x83ba4 (slot*1000,team*51000)
+0x00961ae0 (Ghidra 0x00a61ae0) | count=   2 | ACCESSOR off=0x83c50 (slot*1000,team*51000)
+0x00961c54 (Ghidra 0x00a61c54) | count=   2 | ACCESSOR off=0x83cb0 (slot*1000,team*51000)
+0x0095780c (Ghidra 0x00a5780c) | count=   2 | ACCESSOR off=0x83920 (team*51000)
+0x00957820 (Ghidra 0x00a57820) | count=   2 | ACCESSOR off=0x83920 (team*51000)
+0x00ac33f0 (Ghidra 0x00bc33f0) | count=   2 | FUNC
+0x00ac3400 (Ghidra 0x00bc3400) | count=   2 | FUNC
+0x004c8e50 (Ghidra 0x005c8e50) | count=   2 | FUNC
+0x00777c6c (Ghidra 0x00877c6c) | count=   2 | FUNC
+0x004ab128 (Ghidra 0x005ab128) | count=   2 | FUNC
+0x005ee0d0 (Ghidra 0x006ee0d0) | count=   2 | FUNC
+0x006accc4 (Ghidra 0x007accc4) | count=   2 | FUNC
+0x004cf6c0 (Ghidra 0x005cf6c0) | count=   2 | FUNC
+0x004cf664 (Ghidra 0x005cf664) | count=   2 | FUNC
+0x00950034 (Ghidra 0x00a50034) | count=   2 | FUNC
+0x0060c220 (Ghidra 0x0070c220) | count=   2 | FUNC
+0x008d06fc (Ghidra 0x009d06fc) | count=   2 | FUNC
+0x004ab174 (Ghidra 0x005ab174) | count=   2 | FUNC
+0x006ab978 (Ghidra 0x007ab978) | count=   2 | FUNC
+0x0035e350 (Ghidra 0x0045e350) | count=   2 | FUNC
+0x006ab580 (Ghidra 0x007ab580) | count=   2 | FUNC
+0x006b7ff8 (Ghidra 0x007b7ff8) | count=   2 | FUNC
+0x008d2228 (Ghidra 0x009d2228) | count=   2 | FUNC
+0x008ce358 (Ghidra 0x009ce358) | count=   2 | FUNC
+0x0097039c (Ghidra 0x00a7039c) | count=   2 | FUNC
+0x0053ee24 (Ghidra 0x0063ee24) | count=   2 | FUNC
+0x006af4ac (Ghidra 0x007af4ac) | count=   2 | FUNC
+0x006afdb0 (Ghidra 0x007afdb0) | count=   2 | FUNC
+0x0053fc28 (Ghidra 0x0063fc28) | count=   2 | FUNC
+0x00600898 (Ghidra 0x00700898) | count=   2 | FUNC
+0x0090a0e8 (Ghidra 0x00a0a0e8) | count=   2 | FUNC
+0x004cf74c (Ghidra 0x005cf74c) | count=   2 | FUNC
+0x0091f908 (Ghidra 0x00a1f908) | count=   2 | FUNC
+0x00708488 (Ghidra 0x00808488) | count=   2 | FUNC
+0x005f84c8 (Ghidra 0x006f84c8) | count=   2 | FUNC
+0x005f84f0 (Ghidra 0x006f84f0) | count=   2 | FUNC
+0x004cf794 (Ghidra 0x005cf794) | count=   2 | FUNC
+0x008aeed0 (Ghidra 0x009aeed0) | count=   2 | FUNC
+0x004cf9d0 (Ghidra 0x005cf9d0) | count=   2 | FUNC
+0x0049683c (Ghidra 0x0059683c) | count=   2 | FUNC
+0x00768790 (Ghidra 0x00868790) | count=   2 | FUNC
+0x00766898 (Ghidra 0x00866898) | count=   2 | FUNC
+0x008ae278 (Ghidra 0x009ae278) | count=   2 | FUNC
+0x0033ecf4 (Ghidra 0x0043ecf4) | count=   2 | FUNC
+0x0053fdd4 (Ghidra 0x0063fdd4) | count=   2 | FUNC
+0x004b1674 (Ghidra 0x005b1674) | count=   2 | FUNC
+0x004abf04 (Ghidra 0x005abf04) | count=   2 | FUNC
+0x008b6dec (Ghidra 0x009b6dec) | count=   2 | FUNC
+0x009625c4 (Ghidra 0x00a625c4) | count=   2 | ACCESSOR off=0x83ab4 (slot*1000,team*0x1f0,team*51000)
+0x00960660 (Ghidra 0x00a60660) | count=   2 | ACCESSOR off=0x83b14 (slot*1000,team*51000)
+0x004aaca0 (Ghidra 0x005aaca0) | count=   2 | FUNC
+0x00899ab8 (Ghidra 0x00999ab8) | count=   2 | FUNC
+0x00490bb8 (Ghidra 0x00590bb8) | count=   2 | FUNC
+0x004cf538 (Ghidra 0x005cf538) | count=   2 | FUNC
+0x00959d48 (Ghidra 0x00a59d48) | count=   2 | ACCESSOR off=0x83adc (slot*1000,team*51000)
+0x00961ee8 (Ghidra 0x00a61ee8) | count=   2 | ACCESSOR off=0x83a8c,0x83a8c (slot*1000,team*0x1f0,team*51000)
+0x009624e8 (Ghidra 0x00a624e8) | count=   2 | ACCESSOR off=0x83a90 (slot*1000,team*0x1f0,team*51000)
+0x0095a540 (Ghidra 0x00a5a540) | count=   2 | ACCESSOR off=0x83908 (slot*1000,team*51000)
+0x0095a59c (Ghidra 0x00a5a59c) | count=   2 | ACCESSOR off=0x83938 (slot*1000,team*51000)
+0x00959830 (Ghidra 0x00a59830) | count=   2 | ACCESSOR off=0x83950 (slot*1000,team*51000)
+0x00959cf4 (Ghidra 0x00a59cf4) | count=   2 | ACCESSOR off=0x83ad4 (slot*1000,team*51000)
+0x0095c2e8 (Ghidra 0x00a5c2e8) | count=   2 | ACCESSOR off=0x83958 (slot*1000,team*51000)
+0x005d9d6c (Ghidra 0x006d9d6c) | count=   2 | FUNC
+0x005daa58 (Ghidra 0x006daa58) | count=   2 | FUNC
+0x0035e320 (Ghidra 0x0045e320) | count=   2 | FUNC
+0x004af168 (Ghidra 0x005af168) | count=   2 | FUNC
+0x004c1960 (Ghidra 0x005c1960) | count=   2 | FUNC
+0x004af0d8 (Ghidra 0x005af0d8) | count=   2 | FUNC
+0x005cdfa4 (Ghidra 0x006cdfa4) | count=   2 | FUNC
+0x004b1f74 (Ghidra 0x005b1f74) | count=   2 | FUNC
+0x004ba6d4 (Ghidra 0x005ba6d4) | count=   2 | FUNC
+0x00958fe8 (Ghidra 0x00a58fe8) | count=   2 | ACCESSOR off=0x8390c,0x8390c,0x8390c (slot*1000,team*51000)
+0x009610f8 (Ghidra 0x00a610f8) | count=   2 | ACCESSOR off=0x83b1c (slot*1000,team*51000)
+0x00960488 (Ghidra 0x00a60488) | count=   2 | ACCESSOR off=0x83954,0x83ac8,0x83b10,0x83b10,0x83b14 (slot*1000,team*51000)
+0x009606ac (Ghidra 0x00a606ac) | count=   2 | ACCESSOR off=0x83b90 (slot*1000,team*51000)
+0x00961960 (Ghidra 0x00a61960) | count=   2 | ACCESSOR off=0x83c0c (slot*1000,team*51000)
+0x004aacf0 (Ghidra 0x005aacf0) | count=   2 | FUNC
+0x00959b50 (Ghidra 0x00a59b50) | count=   2 | ACCESSOR off=0x83ac8 (slot*1000,team*51000)
+0x00961494 (Ghidra 0x00a61494) | count=   2 | ACCESSOR off=0x83ba0 (slot*1000,team*51000)
+0x009616e8 (Ghidra 0x00a616e8) | count=   2 | ACCESSOR off=0x83bbc (slot*1000,team*51000)
+0x00961bc0 (Ghidra 0x00a61bc0) | count=   2 | ACCESSOR off=0x83c74 (slot*1000,team*51000)
+0x00961d34 (Ghidra 0x00a61d34) | count=   2 | ACCESSOR off=0x83ce8 (slot*1000,team*51000)
+0x0096126c (Ghidra 0x00a6126c) | count=   2 | ACCESSOR off=0x83b34 (slot*1000,team*51000)
+0x00533464 (Ghidra 0x00633464) | count=   2 | FUNC
+0x00960a54 (Ghidra 0x00a60a54) | count=   2 | ACCESSOR off=0x83c78 (slot*1000,team*51000)
+0x00960c4c (Ghidra 0x00a60c4c) | count=   2 | ACCESSOR off=0x83c7c (slot*1000,team*51000)
+0x00960ed0 (Ghidra 0x00a60ed0) | count=   2 | ACCESSOR off=0x83c80 (slot*1000,team*51000)
+0x009610ac (Ghidra 0x00a610ac) | count=   2 | ACCESSOR off=0x83c84 (slot*1000,team*51000)
+0x009628b8 (Ghidra 0x00a628b8) | count=   2 | ACCESSOR off=0x83b78 (slot*1000,team*51000)
+0x00957c8c (Ghidra 0x00a57c8c) | count=   2 | ACCESSOR off=0x8394c (team*51000)
+0x009578b4 (Ghidra 0x00a578b4) | count=   2 | ACCESSOR off=0x8392c (team*51000)
+0x00959fd4 (Ghidra 0x00a59fd4) | count=   2 | ACCESSOR off=0x83b0c (slot*1000,team*51000)
+0x004acf30 (Ghidra 0x005acf30) | count=   2 | FUNC
+0x0054bd28 (Ghidra 0x0064bd28) | count=   2 | FUNC
+0x009579e0 (Ghidra 0x00a579e0) | count=   2 | ACCESSOR off=0x83934 (team*51000)
+0x0095d468 (Ghidra 0x00a5d468) | count=   2 | ACCESSOR off=0x83bf4 (slot*1000,team*51000)
+0x0095d580 (Ghidra 0x00a5d580) | count=   2 | ACCESSOR off=0x83bfc (slot*1000,team*51000)
+0x0095d698 (Ghidra 0x00a5d698) | count=   2 | ACCESSOR off=0x83cac (slot*1000,team*51000)
+0x00958d8c (Ghidra 0x00a58d8c) | count=   2 | ACCESSOR off=0x83c3c (slot*1000,team*0x1f0,team*51000)
+0x00961f9c (Ghidra 0x00a61f9c) | count=   2 | ACCESSOR off=0x83aa4 (slot*1000,team*0x1f0,team*51000)
+0x005e0618 (Ghidra 0x006e0618) | count=   2 | FUNC
+0x008cbcb8 (Ghidra 0x009cbcb8) | count=   2 | FUNC
+0x008cbc90 (Ghidra 0x009cbc90) | count=   2 | FUNC
+0x009607d0 (Ghidra 0x00a607d0) | count=   1 | ACCESSOR off=0x839f8 (slot*1000,team*51000)
+0x009615b4 (Ghidra 0x00a615b4) | count=   1 | FUNC
+0x00961b6c (Ghidra 0x00a61b6c) | count=   1 | FUNC
+0x00961ce0 (Ghidra 0x00a61ce0) | count=   1 | FUNC
+0x00960934 (Ghidra 0x00a60934) | count=   1 | FUNC
+0x009609c8 (Ghidra 0x00a609c8) | count=   1 | ACCESSOR off=0x83a10 (slot*1000,team*51000)
+0x00960b2c (Ghidra 0x00a60b2c) | count=   1 | FUNC
+0x00960bc0 (Ghidra 0x00a60bc0) | count=   1 | ACCESSOR off=0x83a14 (slot*1000,team*51000)
+0x00960d24 (Ghidra 0x00a60d24) | count=   1 | FUNC
+0x00960db8 (Ghidra 0x00a60db8) | count=   1 | ACCESSOR off=0x83a38 (slot*1000,team*51000)
+0x0095e2c0 (Ghidra 0x00a5e2c0) | count=   1 | ACCESSOR off=0x83a24,0x83928,0x83924,0x83a24,0x51eb851f,0x83908,0x83ccc (slot*1000,team*51000)
+0x00961608 (Ghidra 0x00a61608) | count=   1 | ACCESSOR off=0x83bac (slot*1000,team*51000)
+0x00961694 (Ghidra 0x00a61694) | count=   1 | FUNC
+0x00960fcc (Ghidra 0x00a60fcc) | count=   1 | FUNC
+0x00961020 (Ghidra 0x00a61020) | count=   1 | ACCESSOR off=0x83b64 (slot*1000,team*51000)
+0x0033ec94 (Ghidra 0x0043ec94) | count=   1 | FUNC
+0x0033ec5c (Ghidra 0x0043ec5c) | count=   1 | FUNC
+0x0033dd3c (Ghidra 0x0043dd3c) | count=   1 | FUNC
+0x0095f994 (Ghidra 0x00a5f994) | count=   1 | ACCESSOR off=0x83a64 (slot*1000,team*51000)
+0x00973150 (Ghidra 0x00a73150) | count=   1 | FUNC
+0x004c8c2c (Ghidra 0x005c8c2c) | count=   1 | FUNC
+0x005db4b4 (Ghidra 0x006db4b4) | count=   1 | FUNC
+0x005db2c0 (Ghidra 0x006db2c0) | count=   1 | FUNC
+0x00338a58 (Ghidra 0x00438a58) | count=   1 | FUNC
+0x005db6ac (Ghidra 0x006db6ac) | count=   1 | FUNC
+0x00341474 (Ghidra 0x00441474) | count=   1 | FUNC
+0x0033cfc4 (Ghidra 0x0043cfc4) | count=   1 | FUNC
+0x004c8e3c (Ghidra 0x005c8e3c) | count=   1 | FUNC
+0x005dbabc (Ghidra 0x006dbabc) | count=   1 | FUNC
+0x003fed18 (Ghidra 0x004fed18) | count=   1 | FUNC
+0x00536320 (Ghidra 0x00636320) | count=   1 | FUNC
+0x00550e5c (Ghidra 0x00650e5c) | count=   1 | FUNC
+0x005519c8 (Ghidra 0x006519c8) | count=   1 | FUNC
+0x005efca4 (Ghidra 0x006efca4) | count=   1 | FUNC
+0x004df888 (Ghidra 0x005df888) | count=   1 | FUNC
+0x006d79dc (Ghidra 0x007d79dc) | count=   1 | FUNC
+0x006ad45c (Ghidra 0x007ad45c) | count=   1 | FUNC
+0x0060c3ec (Ghidra 0x0070c3ec) | count=   1 | FUNC
+0x008d0f60 (Ghidra 0x009d0f60) | count=   1 | FUNC
+0x008d0c28 (Ghidra 0x009d0c28) | count=   1 | FUNC
+0x008d2238 (Ghidra 0x009d2238) | count=   1 | FUNC
+0x00534b6c (Ghidra 0x00634b6c) | count=   1 | FUNC
+0x0047a480 (Ghidra 0x0057a480) | count=   1 | FUNC
+0x0072b458 (Ghidra 0x0082b458) | count=   1 | FUNC
+0x009bedcc (Ghidra 0x00abedcc) | count=   1 | FUNC
+0x009bed88 (Ghidra 0x00abed88) | count=   1 | FUNC
+0x009bed54 (Ghidra 0x00abed54) | count=   1 | FUNC
+0x006d78c0 (Ghidra 0x007d78c0) | count=   1 | FUNC
+0x006a95d8 (Ghidra 0x007a95d8) | count=   1 | FUNC
+0x006ab618 (Ghidra 0x007ab618) | count=   1 | FUNC
+0x006b14a0 (Ghidra 0x007b14a0) | count=   1 | FUNC
+0x006b0e64 (Ghidra 0x007b0e64) | count=   1 | FUNC
+0x006b0be4 (Ghidra 0x007b0be4) | count=   1 | FUNC
+0x006af340 (Ghidra 0x007af340) | count=   1 | FUNC
+0x0072572c (Ghidra 0x0082572c) | count=   1 | FUNC
+0x0053d870 (Ghidra 0x0063d870) | count=   1 | FUNC
+0x0053ec90 (Ghidra 0x0063ec90) | count=   1 | FUNC
+0x00669620 (Ghidra 0x00769620) | count=   1 | FUNC
+0x0089ae20 (Ghidra 0x0099ae20) | count=   1 | FUNC
+0x0089afac (Ghidra 0x0099afac) | count=   1 | FUNC
+0x006ac264 (Ghidra 0x007ac264) | count=   1 | FUNC
+0x004cf5fc (Ghidra 0x005cf5fc) | count=   1 | FUNC
+0x0088a1a8 (Ghidra 0x0098a1a8) | count=   1 | FUNC
+0x0068a22c (Ghidra 0x0078a22c) | count=   1 | FUNC
+0x0090a1f0 (Ghidra 0x00a0a1f0) | count=   1 | FUNC
+0x0090a26c (Ghidra 0x00a0a26c) | count=   1 | FUNC
+0x006a9764 (Ghidra 0x007a9764) | count=   1 | FUNC
+0x006a9a18 (Ghidra 0x007a9a18) | count=   1 | FUNC
+0x0053fce0 (Ghidra 0x0063fce0) | count=   1 | FUNC
+0x008ce864 (Ghidra 0x009ce864) | count=   1 | FUNC
+0x008ce3bc (Ghidra 0x009ce3bc) | count=   1 | FUNC
+0x008ce698 (Ghidra 0x009ce698) | count=   1 | FUNC
+0x005efe3c (Ghidra 0x006efe3c) | count=   1 | FUNC
+0x0068a1b4 (Ghidra 0x0078a1b4) | count=   1 | FUNC
+0x0070d4f4 (Ghidra 0x0080d4f4) | count=   1 | FUNC
+0x0030a850 (Ghidra 0x0040a850) | count=   1 | FUNC
+0x0087a5a4 (Ghidra 0x0097a5a4) | count=   1 | FUNC
+0x0070ddb4 (Ghidra 0x0080ddb4) | count=   1 | FUNC
+0x006bc478 (Ghidra 0x007bc478) | count=   1 | FUNC
+0x0036fe84 (Ghidra 0x0046fe84) | count=   1 | FUNC
+0x004dfbc4 (Ghidra 0x005dfbc4) | count=   1 | FUNC
+0x005e447c (Ghidra 0x006e447c) | count=   1 | FUNC
+0x005f8570 (Ghidra 0x006f8570) | count=   1 | FUNC
+0x006ac614 (Ghidra 0x007ac614) | count=   1 | FUNC
+0x005f6900 (Ghidra 0x006f6900) | count=   1 | FUNC
+0x005f6a48 (Ghidra 0x006f6a48) | count=   1 | FUNC
+0x005f3eb8 (Ghidra 0x006f3eb8) | count=   1 | FUNC
+0x005f69b0 (Ghidra 0x006f69b0) | count=   1 | FUNC
+0x008cd2b4 (Ghidra 0x009cd2b4) | count=   1 | FUNC
+0x0096fe10 (Ghidra 0x00a6fe10) | count=   1 | FUNC
+0x008d1c08 (Ghidra 0x009d1c08) | count=   1 | FUNC
+0x007e8424 (Ghidra 0x008e8424) | count=   1 | FUNC
+0x007e5518 (Ghidra 0x008e5518) | count=   1 | FUNC
+0x007e87d0 (Ghidra 0x008e87d0) | count=   1 | FUNC
+0x007e8a3c (Ghidra 0x008e8a3c) | count=   1 | FUNC
+0x007ec950 (Ghidra 0x008ec950) | count=   1 | FUNC
+0x0082e590 (Ghidra 0x0092e590) | count=   1 | FUNC
+0x0082e8a4 (Ghidra 0x0092e8a4) | count=   1 | FUNC
+0x009ad648 (Ghidra 0x00aad648) | count=   1 | FUNC
+0x00700498 (Ghidra 0x00800498) | count=   1 | FUNC
+0x0035e31c (Ghidra 0x0045e31c) | count=   1 | FUNC
+0x006abbf4 (Ghidra 0x007abbf4) | count=   1 | FUNC
+0x00734c98 (Ghidra 0x00834c98) | count=   1 | FUNC
+0x0089dc54 (Ghidra 0x0099dc54) | count=   1 | FUNC
+0x008a0d0c (Ghidra 0x009a0d0c) | count=   1 | FUNC
+0x0073566c (Ghidra 0x0083566c) | count=   1 | FUNC
+0x00764608 (Ghidra 0x00864608) | count=   1 | FUNC
+0x00764534 (Ghidra 0x00864534) | count=   1 | FUNC
+0x0092420c (Ghidra 0x00a2420c) | count=   1 | FUNC
+0x0060f530 (Ghidra 0x0070f530) | count=   1 | FUNC
+0x0060d90c (Ghidra 0x0070d90c) | count=   1 | FUNC
+0x0060ea4c (Ghidra 0x0070ea4c) | count=   1 | FUNC
+0x0060e114 (Ghidra 0x0070e114) | count=   1 | FUNC
+0x00536300 (Ghidra 0x00636300) | count=   1 | FUNC
+0x0033e748 (Ghidra 0x0043e748) | count=   1 | FUNC
+0x004bbf4c (Ghidra 0x005bbf4c) | count=   1 | FUNC
+0x004bc3b4 (Ghidra 0x005bc3b4) | count=   1 | FUNC
+0x004bc54c (Ghidra 0x005bc54c) | count=   1 | FUNC
+0x004bc6bc (Ghidra 0x005bc6bc) | count=   1 | FUNC
+0x004bc854 (Ghidra 0x005bc854) | count=   1 | FUNC
+0x004bc9ec (Ghidra 0x005bc9ec) | count=   1 | FUNC
+0x004bcc2c (Ghidra 0x005bcc2c) | count=   1 | FUNC
+0x004bce6c (Ghidra 0x005bce6c) | count=   1 | FUNC
+0x004bd09c (Ghidra 0x005bd09c) | count=   1 | FUNC
+0x004aa700 (Ghidra 0x005aa700) | count=   1 | FUNC
+0x004b69a4 (Ghidra 0x005b69a4) | count=   1 | FUNC
+0x004b1608 (Ghidra 0x005b1608) | count=   1 | FUNC
+0x00585844 (Ghidra 0x00685844) | count=   1 | FUNC
+0x005347c4 (Ghidra 0x006347c4) | count=   1 | FUNC
+0x00992ff4 (Ghidra 0x00a92ff4) | count=   1 | FUNC
+0x00ac33e0 (Ghidra 0x00bc33e0) | count=   1 | FUNC
+0x0085baa8 (Ghidra 0x0095baa8) | count=   1 | FUNC
+0x008d1f6c (Ghidra 0x009d1f6c) | count=   1 | FUNC
+0x008d1f90 (Ghidra 0x009d1f90) | count=   1 | FUNC
+0x00959dd4 (Ghidra 0x00a59dd4) | count=   1 | ACCESSOR off=0x83adc (slot*1000,team*51000)
+0x00768168 (Ghidra 0x00868168) | count=   1 | FUNC
+0x00766ca4 (Ghidra 0x00866ca4) | count=   1 | FUNC
+0x0034e744 (Ghidra 0x0044e744) | count=   1 | FUNC
+0x007003f4 (Ghidra 0x008003f4) | count=   1 | FUNC
+0x007de0f0 (Ghidra 0x008de0f0) | count=   1 | FUNC
+0x008b9144 (Ghidra 0x009b9144) | count=   1 | FUNC
+0x005df1f0 (Ghidra 0x006df1f0) | count=   1 | FUNC
+0x005e5ed0 (Ghidra 0x006e5ed0) | count=   1 | FUNC
+0x005e5f48 (Ghidra 0x006e5f48) | count=   1 | FUNC
+0x0030f80c (Ghidra 0x0040f80c) | count=   1 | FUNC
+0x008ea87c (Ghidra 0x009ea87c) | count=   1 | FUNC
+0x008eaa70 (Ghidra 0x009eaa70) | count=   1 | FUNC
+0x00707850 (Ghidra 0x00807850) | count=   1 | FUNC
+0x0052d830 (Ghidra 0x0062d830) | count=   1 | FUNC
+0x00951138 (Ghidra 0x00a51138) | count=   1 | FUNC
+0x004b1f30 (Ghidra 0x005b1f30) | count=   1 | FUNC
+0x004b1bf4 (Ghidra 0x005b1bf4) | count=   1 | FUNC
+0x004b217c (Ghidra 0x005b217c) | count=   1 | FUNC
+0x008aa848 (Ghidra 0x009aa848) | count=   1 | FUNC
+0x008b99a0 (Ghidra 0x009b99a0) | count=   1 | FUNC
+0x004af658 (Ghidra 0x005af658) | count=   1 | FUNC
+0x004bf8e8 (Ghidra 0x005bf8e8) | count=   1 | FUNC
+0x008aafb8 (Ghidra 0x009aafb8) | count=   1 | FUNC
+0x00534980 (Ghidra 0x00634980) | count=   1 | FUNC
+0x0095999c (Ghidra 0x00a5999c) | count=   1 | ACCESSOR off=0x83a08 (slot*1000,team*0x1f0,team*51000)
+0x0095fda0 (Ghidra 0x00a5fda0) | count=   1 | ACCESSOR off=0x83ad8 (slot*1000,team*51000)
+0x00959afc (Ghidra 0x00a59afc) | count=   1 | ACCESSOR off=0x83a0c (slot*1000,team*51000)
+0x00959ab0 (Ghidra 0x00a59ab0) | count=   1 | ACCESSOR off=0x83a0c (slot*1000,team*51000)
+0x00961218 (Ghidra 0x00a61218) | count=   1 | ACCESSOR off=0x83b20 (slot*1000,team*51000)
+0x0096118c (Ghidra 0x00a6118c) | count=   1 | ACCESSOR off=0x83b20 (slot*1000,team*51000)
+0x009619ac (Ghidra 0x00a619ac) | count=   1 | ACCESSOR off=0x83c0c (slot*1000,team*51000)
+0x00961920 (Ghidra 0x00a61920) | count=   1 | ACCESSOR off=0x83c0c (slot*1000,team*51000)
+0x004aaf3c (Ghidra 0x005aaf3c) | count=   1 | FUNC
+0x0095fe74 (Ghidra 0x00a5fe74) | count=   1 | ACCESSOR off=0x83b10 (slot*1000,team*51000)
+0x00960a14 (Ghidra 0x00a60a14) | count=   1 | ACCESSOR off=0x83c78 (slot*1000,team*51000)
+0x009608e8 (Ghidra 0x00a608e8) | count=   1 | ACCESSOR off=0x839fc (slot*1000,team*51000)
+0x00960c0c (Ghidra 0x00a60c0c) | count=   1 | ACCESSOR off=0x83c7c (slot*1000,team*51000)
+0x00960ae0 (Ghidra 0x00a60ae0) | count=   1 | ACCESSOR off=0x83a00 (slot*1000,team*51000)
+0x00960e90 (Ghidra 0x00a60e90) | count=   1 | ACCESSOR off=0x83c80 (slot*1000,team*51000)
+0x00960cd8 (Ghidra 0x00a60cd8) | count=   1 | ACCESSOR off=0x83a34 (slot*1000,team*51000)
+0x0096106c (Ghidra 0x00a6106c) | count=   1 | ACCESSOR off=0x83c84 (slot*1000,team*51000)
+0x00960f80 (Ghidra 0x00a60f80) | count=   1 | ACCESSOR off=0x83b60 (slot*1000,team*51000)
+0x004aa6a8 (Ghidra 0x005aa6a8) | count=   1 | FUNC
+0x009611cc (Ghidra 0x00a611cc) | count=   1 | ACCESSOR off=0x83b20 (slot*1000,team*51000)
+0x004aa6c0 (Ghidra 0x005aa6c0) | count=   1 | FUNC
+0x004ab294 (Ghidra 0x005ab294) | count=   1 | FUNC
+0x0095a93c (Ghidra 0x00a5a93c) | count=   1 | ACCESSOR off=0x83ca8 (slot*1000,team*51000)
+0x008cbce8 (Ghidra 0x009cbce8) | count=   1 | FUNC
+0x0095a1d4 (Ghidra 0x00a5a1d4) | count=   1 | ACCESSOR off=0x83924 (slot*1000,team*51000)
+0x00961a40 (Ghidra 0x00a61a40) | count=   1 | ACCESSOR off=0x83c14 (slot*1000,team*51000)
+0x0095a2ac (Ghidra 0x00a5a2ac) | count=   1 | ACCESSOR off=0x83928 (slot*1000,team*51000)
+0x0095a300 (Ghidra 0x00a5a300) | count=   1 | ACCESSOR off=0x8392c (slot*1000,team*51000)
+0x00959908 (Ghidra 0x00a59908) | count=   1 | ACCESSOR off=0x83964 (slot*1000,team*51000)
+0x00960788 (Ghidra 0x00a60788) | count=   1 | ACCESSOR off=0x839f8 (slot*1000,team*51000)
+0x00962554 (Ghidra 0x00a62554) | count=   1 | ACCESSOR off=0x83ab4 (slot*1000,team*0x1f0,team*51000)
+0x009626a4 (Ghidra 0x00a626a4) | count=   1 | ACCESSOR off=0x83ad0 (slot*1000,team*0x1f0,team*51000)
+0x004aa690 (Ghidra 0x005aa690) | count=   1 | FUNC
+0x009612ac (Ghidra 0x00a612ac) | count=   1 | ACCESSOR off=0x83b34 (slot*1000,team*51000)
+0x004b235c (Ghidra 0x005b235c) | count=   1 | FUNC
+0x004b2314 (Ghidra 0x005b2314) | count=   1 | FUNC
+0x004cfa80 (Ghidra 0x005cfa80) | count=   1 | FUNC
+0x004b22a4 (Ghidra 0x005b22a4) | count=   1 | FUNC
+0x004b26a4 (Ghidra 0x005b26a4) | count=   1 | FUNC
+0x004b23cc (Ghidra 0x005b23cc) | count=   1 | FUNC
+0x004b2028 (Ghidra 0x005b2028) | count=   1 | FUNC
+0x0048e72c (Ghidra 0x0058e72c) | count=   1 | FUNC
+0x00962e30 (Ghidra 0x00a62e30) | count=   1 | ACCESSOR off=0x83cd0 (slot*1000,team*51000)
+0x004ad22c (Ghidra 0x005ad22c) | count=   1 | FUNC
+0x004aecec (Ghidra 0x005aecec) | count=   1 | FUNC
+0x00957ab8 (Ghidra 0x00a57ab8) | count=   1 | ACCESSOR off=0x8393c (team*51000)
+0x00957834 (Ghidra 0x00a57834) | count=   1 | ACCESSOR off=0x83920 (team*51000)
+0x0095da7c (Ghidra 0x00a5da7c) | count=   1 | ACCESSOR off=0x83c5c (slot*1000,team*51000)
+0x009612f8 (Ghidra 0x00a612f8) | count=   1 | ACCESSOR off=0x83b34 (slot*1000,team*51000)
+0x00961a00 (Ghidra 0x00a61a00) | count=   1 | ACCESSOR off=0x83c14 (slot*1000,team*51000)
+0x00961a8c (Ghidra 0x00a61a8c) | count=   1 | ACCESSOR off=0x83c14 (slot*1000,team*51000)
+0x004be388 (Ghidra 0x005be388) | count=   1 | FUNC
+0x00957b7c (Ghidra 0x00a57b7c) | count=   1 | ACCESSOR off=0x83948 (team*51000)
+0x00962480 (Ghidra 0x00a62480) | count=   1 | ACCESSOR off=0x83a90 (slot*1000,team*0x1f0,team*51000)
+0x009623ac (Ghidra 0x00a623ac) | count=   1 | ACCESSOR off=0x83ab0 (slot*1000,team*0x1f0,team*51000)
+0x00962190 (Ghidra 0x00a62190) | count=   1 | ACCESSOR off=0x83c3c (slot*1000,team*0x1f0,team*51000)
+0x00962634 (Ghidra 0x00a62634) | count=   1 | ACCESSOR off=0x83ad0 (slot*1000,team*0x1f0,team*51000)
+0x0095a140 (Ghidra 0x00a5a140) | count=   1 | ACCESSOR off=0x83ccc (slot*1000,team*51000)
+0x00962ebc (Ghidra 0x00a62ebc) | count=   1 | ACCESSOR off=0x83cd4 (slot*1000,team*51000)
+0x00959bdc (Ghidra 0x00a59bdc) | count=   1 | ACCESSOR off=0x83acc (slot*1000,team*51000)
+0x008d219c (Ghidra 0x009d219c) | count=   1 | FUNC
+0x0047a8a8 (Ghidra 0x0057a8a8) | count=   1 | FUNC
+0x005a5d58 (Ghidra 0x006a5d58) | count=   1 | FUNC
+0x00962070 (Ghidra 0x00a62070) | count=   1 | ACCESSOR off=0x83aa4,0x83aa4 (slot*1000,team*0x1f0,team*51000)
+0x009622d8 (Ghidra 0x00a622d8) | count=   1 | ACCESSOR off=0x83aac (slot*1000,team*0x1f0,team*51000)
+0x00962124 (Ghidra 0x00a62124) | count=   1 | ACCESSOR off=0x83c3c (slot*1000,team*0x1f0,team*51000)
+0x00962204 (Ghidra 0x00a62204) | count=   1 | ACCESSOR off=0x83aa8 (slot*1000,team*0x1f0,team*51000)
+0x0095ff4c (Ghidra 0x00a5ff4c) | count=   1 | ACCESSOR off=0x83bec (slot*1000,team*51000)
+0x009589e0 (Ghidra 0x00a589e0) | count=   1 | ACCESSOR off=0x83908,0x83908,0x8e9fe5,0x83908,0x83908,0x656e6f4e (slot*1000,team*0x1f0,team*51000)
+0x0095b3a4 (Ghidra 0x00a5b3a4) | count=   1 | ACCESSOR off=0x8394c (slot*1000,team*0x1f0,team*51000)
+0x0095b484 (Ghidra 0x00a5b484) | count=   1 | ACCESSOR off=0x839ac (slot*1000,team*0x1f0,team*51000)
+0x0095b564 (Ghidra 0x00a5b564) | count=   1 | ACCESSOR off=0x839b0 (slot*1000,team*0x1f0,team*51000)
+0x0095b7a0 (Ghidra 0x00a5b7a0) | count=   1 | ACCESSOR off=0x839bc (slot*1000,team*0x1f0,team*51000)
+0x0095b644 (Ghidra 0x00a5b644) | count=   1 | ACCESSOR off= (slot*1000,team*0x1f0,team*51000)
+0x0095b880 (Ghidra 0x00a5b880) | count=   1 | ACCESSOR off=0x839c0 (slot*1000,team*0x1f0,team*51000)
+0x00962efc (Ghidra 0x00a62efc) | count=   1 | ACCESSOR off=0x83cd4 (slot*1000,team*51000)
+0x008cbd24 (Ghidra 0x009cbd24) | count=   1 | FUNC
+0x008cbd1c (Ghidra 0x009cbd1c) | count=   1 | FUNC
+0x008cbc88 (Ghidra 0x009cbc88) | count=   1 | FUNC
+0x008cbcd0 (Ghidra 0x009cbcd0) | count=   1 | FUNC
+0x008cbcd8 (Ghidra 0x009cbcd8) | count=   1 | FUNC
+0x008cbcc0 (Ghidra 0x009cbcc0) | count=   1 | FUNC
+0x008a9f0c (Ghidra 0x009a9f0c) | count=   1 | FUNC

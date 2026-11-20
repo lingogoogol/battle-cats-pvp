@@ -97,19 +97,24 @@ class TestBattleParityMechanics(unittest.TestCase):
         }, team=TEAM_ENEMY)
         attacker.pos_x = 1000
 
-        # Trigger level 2 surge (lasts 40 frames, hits at frame 0 and frame 20)
+        # Trigger level 2 surge (native 0x4c32c4: 15f spawn delay, hits at frame 15 and 35, lingers 10f -> 65f total)
         self.sim._trigger_surge_attack(attacker, opp_team=TEAM_CAT, direction=1, surge_lvl=2, hit_damage=100)
 
-        # Frame 0 hit lands
-        self.assertEqual(immune_cat.hp, 1000, "Surge immune cat should take 0 damage")
-        self.assertEqual(normal_cat.hp, 900, "Normal cat took first surge tick")
+        # Frame 0: surge is in 15f telegraph delay, no damage yet
+        self.assertEqual(normal_cat.hp, 1000, "Surge should wait 15 frames before first tick")
 
-        # Step 20 frames to trigger second surge tick
+        # Step 15 frames -> first surge tick lands at elapsed == 15
+        for _ in range(15):
+            self.sim.step()
+        self.assertEqual(immune_cat.hp, 1000, "Surge immune cat should take 0 damage")
+        self.assertEqual(normal_cat.hp, 900, "Normal cat took first surge tick at frame 15")
+
+        # Step 20 more frames -> second surge tick lands at elapsed == 35
         for _ in range(20):
             self.sim.step()
 
         self.assertEqual(immune_cat.hp, 1000, "Surge immune cat took 0 damage from 2nd tick")
-        self.assertEqual(normal_cat.hp, 800, "Normal cat took second surge tick")
+        self.assertEqual(normal_cat.hp, 800, "Normal cat took second surge tick at frame 35")
 
     def test_curse_disables_trait_abilities(self):
         # Red Enemy
@@ -343,26 +348,59 @@ class TestBattleParityMechanics(unittest.TestCase):
         }, team=TEAM_ENEMY)
         enemy.pos_x = 1000
 
-        # Enemy triggers surge on counter cat
-        self.sim._trigger_surge_attack(enemy, opp_team=TEAM_CAT, direction=1, surge_lvl=1, hit_damage=100)
+        # Enemy triggers Lv2 surge on counter cat (takes 15f delay before first tick)
+        self.sim._trigger_surge_attack(enemy, opp_team=TEAM_CAT, direction=1, surge_lvl=2, hit_damage=100)
+        for _ in range(15):
+            self.sim.step()
 
-        # Verify a counter surge was spawned by counter_cat
+        # Verify a counter surge reflecting the original surge (lvl=2, dmg=100) was spawned by counter_cat
         counter_surges = [s for s in self.sim.active_surges if s.get("attacker") == counter_cat]
-        self.assertTrue(len(counter_surges) > 0, "Expected counter surge spawned")
+        self.assertEqual(len(counter_surges), 1, "Expected 1 counter surge spawned on first incoming tick")
         self.assertEqual(counter_surges[0]["opp_team"], TEAM_ENEMY)
+        self.assertEqual(counter_surges[0]["lvl"], 2)
+        self.assertEqual(counter_surges[0]["dmg"], 100)
+
+        # Second tick of the same surge must NOT re-trigger Counter-Surge on the same defender
+        for _ in range(20):
+            self.sim.step()
+        counter_surges_after = [s for s in self.sim.active_surges if s.get("attacker") == counter_cat]
+        self.assertEqual(len(counter_surges_after), 1)
 
     def test_nyancombo_activation_and_effects(self):
         # Deck with basic 5 cats: cat (0), tank_cat (1), gross_cat (3), cow_cat (4), axe_cat (2)
         basic_deck = ["cat", "tank_cat", "axe_cat", "gross_cat", "cow_cat"]
-        combo_sim = BattleSimulation(deck=basic_deck)
+        combo_sim = BattleSimulation(deck=basic_deck, base_levels={"wallet": 10})
 
-        # Authentic PONOS Combo 0 gives Initial Money +300 and Worker Level +1
-        # Default starting money is 150 -> becomes 150 + 300 = 450!
-        self.assertEqual(combo_sim.wallet.money, 450)
+        # Native PONOS starts at 0 + Initial Money combo (+300) -> 300 yen (fits inside Lv 10 wallet cap)
+        self.assertEqual(combo_sim.wallet.money, 300)
         # Default starting worker level is 1 -> becomes 1 + 1 = 2!
         self.assertEqual(combo_sim.wallet.level, 2)
         # Verify nyancombo_activate event was emitted
         self.assertTrue(any(e.get("type") == "nyancombo_activate" for e in combo_sim.visual_events))
+
+    def test_single_target_random_tie_breaker(self):
+        """Verifies native ARM64 0x5c9158..0x5c92e4: random target selection among equidistant targets."""
+        first_slots = set()
+        for seed in range(25):
+            sim = BattleSimulation(rng_seed=seed)
+            sim.spawner.spawn_entries = []
+            attacker = sim.spawn_custom_unit({
+                "name": "Single Cat", "hp": 1000, "attack_power": 100,
+                "attack_range": 200, "speed": 0, "attack_windup": 1, "attack_interval": 10,
+                "target_type": "single",
+            }, team=TEAM_CAT)
+            attacker.pos_x = 1500.0
+            e1 = sim.spawn_custom_unit({"name": "Doge A", "hp": 500, "speed": 0}, team=TEAM_ENEMY)
+            e2 = sim.spawn_custom_unit({"name": "Doge B", "hp": 500, "speed": 0}, team=TEAM_ENEMY)
+            e1.pos_x = 1400.0
+            e2.pos_x = 1400.0
+            sim.step()
+            sim.step()
+            if e1.hp < 500:
+                first_slots.add(e1.slot)
+            if e2.hp < 500:
+                first_slots.add(e2.slot)
+        self.assertEqual(first_slots, {1, 2}, "Single-target tie-break must randomly hit both equidistant slots across seeds")
 
     def test_enemy_authentic_multi_hit_and_ld(self):
         """Verifies authentic enemy multi-hit parsing and long distance ranges from t_unit.csv."""
@@ -375,17 +413,23 @@ class TestBattleParityMechanics(unittest.TestCase):
         self.assertEqual(spec12["attack_power"], 250)
 
     def test_piecewise_level_scaling_curve(self):
-        """Verifies authentic PONOS piecewise level curves: Lv 1-20 (+0.20/lv), Lv 21-50 (+0.10/lv or +0.05/lv)."""
+        """Verifies authentic PONOS unitlevel.csv growth curves matching ARM64 0x9632d8 / 0x9645a8."""
         from game_project.simulation.deployer import CatDeployer
         deployer = CatDeployer(deck_keys=["cat"], cat_levels={"cat": 20})
         info_lv20 = deployer.get_slot_info(0)
         # Lv 1 cat HP = 100, mult at lv 20 = 1.0 + 0.20 * 19 = 4.8 -> 480 HP
         self.assertEqual(info_lv20["spec"]["hp"], 480)
 
-        # Lv 30 regular cat: mult = 4.8 + 0.10 * 10 = 5.8 -> 580 HP
+        # Lv 30 regular cat (unitlevel.csv: [20, 20, 20, ...]): mult = 6.8 -> 680 HP
         deployer_lv30 = CatDeployer(deck_keys=["cat"], cat_levels={"cat": 30})
         info_lv30 = deployer_lv30.get_slot_info(0)
-        self.assertEqual(info_lv30["spec"]["hp"], 580)
+        self.assertEqual(info_lv30["spec"]["hp"], 680)
+
+        # Lv 50 Awakened Bahamut (id=25, unitlevel.csv: [20, 20, 20, 10, 10, ...]):
+        # base HP 1500 * (1 + 29*0.20 + 20*0.10) = 1500 * 8.80 = 13200 HP
+        deployer_baha = CatDeployer(deck_keys=["ex_bahamut"], cat_levels={"ex_bahamut": 50})
+        info_baha = deployer_baha.get_slot_info(0)
+        self.assertEqual(info_baha["spec"]["hp"], 13200)
 
     def test_mini_wave_and_mini_surge_scaling(self):
         """Verifies Mini-Wave and Mini-Surge deal 20% (1/5) damage with faster wave segments."""
@@ -509,8 +553,8 @@ class TestBattleParityMechanics(unittest.TestCase):
         cat_c = sim.get_castle(TEAM_CAT)
         self.assertEqual(cat_c.max_hp, 22000) # 1000 base + 21000 treasure
         self.assertEqual(sim.cannon_power, 1750) # 250 base + 1500 treasure
-        self.assertEqual(sim.cannon_max_charge, 2400) # 2850 - 450 = 2400 frames (80.0s)
-        self.assertEqual(sim.wallet.max_money, 3500) # 500 base + 3000 treasure
+        self.assertEqual(sim.cannon_max_charge, 1050) # Native 0x47a29c: 1500 - 450 = 1050 frames (35.0s)
+        self.assertEqual(sim.wallet.max_money, 3100) # Native 0x4b1cc8: 100 Lv1 cap + 3000 treasure
 
         # Deploy cat and verify 2.5x HP and 2.5x ATK applied
         sim.wallet.money = 1000

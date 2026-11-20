@@ -29,12 +29,14 @@ class TestPlayableBattle(unittest.TestCase):
         self.assertIsNotNone(enemy_c)
         self.assertGreater(cat_c.hp, 0)
         self.assertGreater(enemy_c.hp, 0)
-        self.assertEqual(cat_c.pos_x, self.sim.battlefield_length - 120)
-        self.assertEqual(enemy_c.pos_x, 120)
+        self.assertEqual(cat_c.pos_x, self.sim.battlefield_length - 700.0)
+        self.assertEqual(enemy_c.pos_x, 700.0)
 
     def test_02_can_deploy_cats(self):
         """Criterion 2: 可以部署角色 (經由金錢扣除與槽位放置)"""
-        # Initially 150 money. Cat costs 50.
+        # Native PONOS starts at 0 money; give 150 yen then Cat costs 50.
+        self.assertEqual(self.sim.wallet.money, 0)
+        self.sim.wallet.money = 150
         success = self.sim.spawn_cat(0)
         self.assertTrue(success, "Failed to spawn basic cat")
         self.assertEqual(self.sim.wallet.money, 100)
@@ -44,10 +46,11 @@ class TestPlayableBattle(unittest.TestCase):
         self.assertIsNotNone(cat_unit)
         self.assertEqual(cat_unit.key, "cat")
         self.assertTrue(cat_unit.is_alive)
-        self.assertEqual(cat_unit.pos_x, self.sim.battlefield_length - 150)
+        self.assertEqual(cat_unit.pos_x, self.sim.get_castle(TEAM_CAT).pos_x - 30)
 
     def test_03_units_move_and_attack(self):
         """Criterion 3: 角色會移動與攻擊 (貓咪向左前進，狗仔向右前進)"""
+        self.sim.wallet.money = 500
         self.sim.spawn_cat(0)
         cat_unit = self.sim.units[TEAM_CAT][1]
         init_x = cat_unit.pos_x
@@ -76,6 +79,7 @@ class TestPlayableBattle(unittest.TestCase):
 
     def test_04_hp_changes_and_knockback(self):
         """Criterion 4: HP 正確變化與擊退觸發"""
+        self.sim.wallet.money = 500
         self.sim.spawn_cat(0)
         cat = self.sim.units[TEAM_CAT][1]
         initial_hp = cat.hp
@@ -107,6 +111,7 @@ class TestPlayableBattle(unittest.TestCase):
     def test_06_can_attack_castle(self):
         """Criterion 6: 可以攻擊城堡"""
         self.sim.spawner.spawn_entries = []
+        self.sim.wallet.money = 500
         self.sim.spawn_cat(0)
         cat = self.sim.units[TEAM_CAT][1]
         enemy_c = self.sim.get_castle(TEAM_ENEMY)
@@ -129,6 +134,7 @@ class TestPlayableBattle(unittest.TestCase):
         self.sim.spawner.spawn_entries = []
         enemy_c = self.sim.get_castle(TEAM_ENEMY)
         enemy_c.hp = 1 # Almost dead
+        self.sim.wallet.money = 500
         self.sim.spawn_cat(0)
         cat = self.sim.units[TEAM_CAT][1]
         cat.pos_x = enemy_c.pos_x + 80
@@ -189,6 +195,7 @@ class TestPlayableBattle(unittest.TestCase):
 
     def test_12_boss_shockwave_and_magnification(self):
         """Criterion 12: 原版 Boss 衝擊波與倍率血量增長"""
+        self.sim.wallet.money = 500
         self.sim.spawn_cat(0)
         cat = self.sim.units[TEAM_CAT][1]
         self.assertIsNotNone(cat)
@@ -274,6 +281,7 @@ class TestPlayableBattle(unittest.TestCase):
     def test_15_four_phase_combat_state_machine(self):
         """Criterion 15: 原版四階段戰鬥狀態機 (前搖鎖定不因目標離開取消、後搖硬直、TBA 冷卻)"""
         self.sim.spawner.spawn_entries = []
+        self.sim.wallet.money = 500
         self.sim.spawn_cat(0)
         cat = self.sim.units[TEAM_CAT][1]
         self.sim.spawn_enemy("doge")
@@ -370,7 +378,7 @@ class TestPlayableBattle(unittest.TestCase):
         doge.hp = 5000
         doge.max_hp = 5000
         cat_castle = self.sim.get_castle(TEAM_CAT)
-        doge.pos_x = cat_castle.pos_x - 400  # Within cannon_range (1200)
+        doge.pos_x = cat_castle.pos_x - 400  # Within Lv1 cannon_range (588.75 DU)
 
         # Charge cannon to 100%
         self.sim.cannon_charge = self.sim.cannon_max_charge
@@ -382,15 +390,14 @@ class TestPlayableBattle(unittest.TestCase):
         self.assertEqual(self.sim.cannon_charge, 0)
         self.assertGreater(self.sim.cannon_anim_timer[TEAM_CAT], 0)
 
-        # Authentic progressive wavefront sweep:
-        # Cannon wavefront propagates forward on each step() (over 14 frames, ~200 px/frame on 2880 stage).
+        # Authentic progressive wavefront sweep (14 frames across authentic 588.75 DU range):
         # First step initiates the visual beam event
         self.sim.step()
         ev_types = [ev.get("type") for ev in self.sim.visual_events]
         self.assertIn("cannon_beam", ev_types, "cannon_beam visual event must survive into step() for BattleRenderer")
 
-        # Step until the sweeping wavefront reaches Doge (Doge is 400px away, reached at step 2)
-        for _ in range(5):
+        # Step until the sweeping wavefront reaches Doge (400 DU ahead, reached around step 8)
+        for _ in range(15):
             if doge.hp < 5000:
                 break
             self.sim.step()

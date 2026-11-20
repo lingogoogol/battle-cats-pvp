@@ -16,7 +16,7 @@ import pygame
 from typing import List, Dict, Any, Optional, Tuple
 from ..core.constants import (
     SCREEN_WIDTH, SCREEN_HEIGHT, GROUND_Y, BATTLEFIELD_LENGTH,
-    COLOR_WHITE, COLOR_RED, COLOR_GOLD, TEAM_CAT, TEAM_ENEMY
+    COLOR_WHITE, COLOR_RED, COLOR_GOLD, TEAM_CAT, TEAM_ENEMY, UNIT_RENDER_SCALE
 )
 from ..simulation.battle_sim import BattleSimulation, SimUnit
 from .camera import Camera2D
@@ -174,7 +174,7 @@ class CannonBeamFX:
         self.end_x = end_x
         self.y = y
         self.team = team
-        self.castle_x = castle_x if castle_x is not None else (start_x + (30 if team == TEAM_CAT else -30))
+        self.castle_x = castle_x if castle_x is not None else (start_x + (67.5 if team == TEAM_CAT else -67.5))
         self.pillar_frames = pillar_frames or []
         self.beam_strip = beam_strip
         self.glow_orb = glow_orb
@@ -212,8 +212,8 @@ class CannonBeamFX:
         # 2. Sweeping Shockwave Explosion Pillars (`nyankoCastle_001_00_00` cuts 0..4) across start_x -> end_x
         total_dist = abs(self.end_x - self.start_x)
         direction = -1.0 if self.end_x < self.start_x else 1.0
-        step_px = 72.0
-        num_pillars = max(1, int(total_dist // step_px) + 1)
+        step_du = 72.0 / max(0.1, getattr(camera, "world_scale", 1.0))
+        num_pillars = max(1, int(total_dist // step_du) + 1)
 
         if self.pillar_frames:
             for i in range(num_pillars):
@@ -221,7 +221,7 @@ class CannonBeamFX:
                 trigger_frame = int((i / float(max(1, num_pillars))) * 14.0)
                 local_age = self.age - trigger_frame
                 if 0 <= local_age < 12:
-                    px = self.start_x + direction * (i * step_px)
+                    px = self.start_x + direction * (i * step_du)
                     psx = camera.world_to_screen_x(px)
                     if -100 <= psx <= SCREEN_WIDTH + 100:
                         f_idx = min(len(self.pillar_frames) - 1, local_age // 2)
@@ -259,7 +259,9 @@ class SurgeEffectFX:
         sx = camera.world_to_screen_x(self.x)
         if sx < -250 or sx > SCREEN_WIDTH + 250:
             return
-        w = int(self.radius * 2)
+        w_scale = getattr(camera, "world_scale", 1.0)
+        scaled_r = max(4.0, self.radius * w_scale)
+        w = int(scaled_r * 2)
         h = 360
         col_surf = pygame.Surface((w, h), pygame.SRCALPHA)
         pulse = 0.7 + 0.3 * math.sin(self.age * 0.5)
@@ -273,10 +275,10 @@ class SurgeEffectFX:
 
         for i in range(6):
             spk_y = (h - (self.age * 12 + i * 55) % h)
-            spk_x = int(w * 0.5 + math.sin(self.age * 0.3 + i) * 60)
+            spk_x = int(w * 0.5 + math.sin(self.age * 0.3 + i) * min(60, w * 0.3))
             pygame.draw.circle(col_surf, (255, 255, 255, 230), (spk_x, int(spk_y)), 4)
 
-        ring_r = int((self.age % 20) * (self.radius / 20.0))
+        ring_r = int((self.age % 20) * (scaled_r / 20.0))
         ring_alpha = max(0, int(255 * (1.0 - (self.age % 20) / 20.0)))
         ring_surf = pygame.Surface((w, 40), pygame.SRCALPHA)
         pygame.draw.ellipse(ring_surf, (255, 255, 255, ring_alpha), (int(w / 2 - ring_r), 5, ring_r * 2, 28), width=3)
@@ -557,7 +559,7 @@ class BattleRenderer(BaseRenderer):
                 fc_img = pygame.image.load(fc_p)
         if fc_img is not None:
             try:
-                self.fc_scaled = to_32bit_scaled(fc_img, (int(128 * 1.3), int(256 * 1.3)))
+                self.fc_scaled = to_32bit_scaled(fc_img, (int(round(128 * UNIT_RENDER_SCALE)), int(round(256 * UNIT_RENDER_SCALE))))
                 self.fc_flipped = pygame.transform.flip(self.fc_scaled, True, False)
             except Exception:
                 pass
@@ -569,15 +571,15 @@ class BattleRenderer(BaseRenderer):
         try:
             if os.path.isfile(base_p):
                 b_img = pygame.image.load(base_p)
-                self.castle_base_surf = to_32bit_scaled(b_img, (int(128 * 1.3), int(128 * 1.3)))
+                self.castle_base_surf = to_32bit_scaled(b_img, (int(round(128 * UNIT_RENDER_SCALE)), int(round(128 * UNIT_RENDER_SCALE))))
                 self.castle_base_flipped = pygame.transform.flip(self.castle_base_surf, True, False)
             if os.path.isfile(plaque_p):
                 p_img = pygame.image.load(plaque_p)
-                self.castle_plaque_surf = to_32bit_scaled(p_img, (int(128 * 1.3), int(128 * 1.3)))
+                self.castle_plaque_surf = to_32bit_scaled(p_img, (int(round(128 * UNIT_RENDER_SCALE)), int(round(128 * UNIT_RENDER_SCALE))))
                 self.castle_plaque_flipped = pygame.transform.flip(self.castle_plaque_surf, True, False)
             if os.path.isfile(turret_p):
                 t_img = pygame.image.load(turret_p)
-                self.castle_turret_surf = to_32bit_scaled(t_img, (int(128 * 1.3), int(256 * 1.3)))
+                self.castle_turret_surf = to_32bit_scaled(t_img, (int(round(128 * UNIT_RENDER_SCALE)), int(round(256 * UNIT_RENDER_SCALE))))
                 self.castle_turret_flipped = pygame.transform.flip(self.castle_turret_surf, True, False)
         except Exception:
             pass
@@ -603,7 +605,7 @@ class BattleRenderer(BaseRenderer):
                 ec_img = pygame.image.load(ec_p)
         if ec_img is not None:
             try:
-                self.ec_scaled = to_32bit_scaled(ec_img, (int(128 * 1.3), int(256 * 1.3)))
+                self.ec_scaled = to_32bit_scaled(ec_img, (int(round(128 * UNIT_RENDER_SCALE)), int(round(256 * UNIT_RENDER_SCALE))))
             except Exception:
                 pass
 
@@ -880,8 +882,8 @@ class BattleRenderer(BaseRenderer):
                 self.surface.blit(plaque_s, (sx - bw // 2, GROUND_Y - bh))
             # 4. Muzzle charging/firing glow
             if anim_t > 16 and self.cannon_glow_orb is not None:
-                muzzle_x = sx + (44 if flipped else -44)
-                muzzle_y = GROUND_Y - 195 + lift_offset
+                muzzle_x = sx + (38 if flipped else -38)
+                muzzle_y = GROUND_Y - 169 + lift_offset
                 self.surface.blit(
                     self.cannon_glow_orb,
                     (int(muzzle_x - self.cannon_glow_orb.get_width() // 2), int(muzzle_y - self.cannon_glow_orb.get_height() // 2))
@@ -935,13 +937,15 @@ class BattleRenderer(BaseRenderer):
         # 3. Official Cat Cannon Range Line & Icon (`img002_tw.imgcut` cuts 0 and 1) when Cannon is ready
         if self.cannon_range_line is not None and self.cannon_range_icon is not None:
             if sim.is_cannon_ready(TEAM_CAT):
-                range_world_x = max(60, (cat_c.pos_x - 30) - sim.cannon_range)
+                cat_c_range = sim.cannon_ranges.get(TEAM_CAT, sim.cannon_range)
+                range_world_x = max(0.0, (cat_c.pos_x - 67.5) - cat_c_range)
                 rsx = self.camera.world_to_screen_x(range_world_x)
                 if -60 <= rsx <= SCREEN_WIDTH + 60:
                     self.surface.blit(self.cannon_range_line, (rsx - 4, GROUND_Y - 120))
                     self.surface.blit(self.cannon_range_icon, (rsx - 28, GROUND_Y - 188))
             if getattr(sim, "pvp_mode", False) and sim.is_cannon_ready(TEAM_ENEMY):
-                p2_range_x = min(sim.battlefield_length - 60, (enemy_c.pos_x + 30) + sim.cannon_range)
+                p2_c_range = sim.cannon_ranges.get(TEAM_ENEMY, sim.cannon_range)
+                p2_range_x = min(float(sim.battlefield_length), (enemy_c.pos_x + 67.5) + p2_c_range)
                 p2_rsx = self.camera.world_to_screen_x(p2_range_x)
                 if -60 <= p2_rsx <= SCREEN_WIDTH + 60:
                     self.surface.blit(self.cannon_range_line, (p2_rsx - 4, GROUND_Y - 120))
@@ -1160,8 +1164,9 @@ class BattleRenderer(BaseRenderer):
         all_units.sort(key=lambda u: u.pos_x)
         for unit in all_units:
             sx = self.camera.world_to_screen_x(unit.pos_x)
+            sy = GROUND_Y + int(getattr(unit, "kb_y", 0.0) * getattr(self.camera, "world_scale", 1.0))
             if -120 <= sx <= SCREEN_WIDTH + 120:
-                self._draw_unit(unit, sx, GROUND_Y, sim.current_frame)
+                self._draw_unit(unit, sx, sy, sim.current_frame)
 
         # 4. Combat FX
         self._render_fx()

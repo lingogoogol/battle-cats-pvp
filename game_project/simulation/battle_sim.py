@@ -16,8 +16,10 @@ from typing import List, Dict, Any, Optional, Union, Tuple
 from ..core.constants import (
     MAX_UNITS_PER_TEAM, SLOT_CASTLE, TEAM_CAT, TEAM_ENEMY,
     KNOCKBACK_FRAMES_DEFAULT, KNOCKBACK_SPEED_PX, KB_SPECS,
+    CASTLE_EDGE_OFFSET_DU, KB_Y_ARC_STATE3_DU, KB_Y_ARC_STATE5_DU,
     WAVE_PROG, WAVE_SEG_FRAMES, WAVE_INI_CAT, WAVE_INI_ENEMY, WAVE_WIDTH_CAT, WAVE_WIDTH_ENEMY,
-    SLOW_SPEED_DU_PER_FRAME, BOSS_DEATH_SLOWMO_FRAMES, DEFAULT_ZOMBIE_REVIVE_FRAMES, DEFAULT_WARP_DISTANCE_DU
+    SLOW_SPEED_DU_PER_FRAME, BOSS_DEATH_SLOWMO_FRAMES, DEFAULT_ZOMBIE_REVIVE_FRAMES, DEFAULT_WARP_DISTANCE_DU,
+    UNIT_RENDER_SCALE
 )
 from ..core.unit_data import CAT_REGISTRY, ENEMY_REGISTRY, ROW_TO_ENEMY_KEY
 from ..core.damage_engine import NativeDamageEngine
@@ -92,9 +94,12 @@ class SimUnit:
         self.traits: List[str] = list(spec.get("traits", ["traitless"]))
         self.target_traits: List[str] = list(spec.get("target_traits", []))
         self.abilities: Dict[str, Any] = dict(spec.get("abilities", {}))
+        self.hitbox_front: int = 0 if slot == SLOT_CASTLE else int(spec.get("hitbox_front", 0))
+        self.hitbox_back: int = 0 if slot == SLOT_CASTLE else int(spec.get("hitbox_back", 320))
 
         # Dynamic battle state
         self.pos_x = pos_x
+        self.kb_y = 0.0
         self.is_alive = True
         self.is_moving = False
         self.attack_cooldown_timer = 0
@@ -109,8 +114,11 @@ class SimUnit:
         self.kb_elapsed = 0
         self.kb_distance = 0.0
         self.is_dying = False
-        # Authentic attack cycle: next attack may start `max(anim_len, pre1 + TBA - 1)` frames after the previous start
+        # Native 0x5cbf84 / 0x5dbc18: TBA starts on last hit frame, overlapping backswing
+        self.tba_timer = 0
         self.cycle_timer = 0
+        self.swing_procs: Optional[Dict[str, Any]] = None
+        self.countered_surge_ids: set = set()
         self.dodge_timer = 0
         self.curse_timer = 0
         self.kb_points_taken = 0
@@ -195,35 +203,54 @@ class BattleSimulation:
         ]
 
         # Initialize Castles at Slot 0
-        cat_castle_base_hp = self.stage_config.get("cat_castle_hp", 1000)
-        castle_hp_scale = 1.0 + 0.1 * (base_levels.get("castle_hp", 1) - 1)
-        cat_castle_hp = int(cat_castle_base_hp * castle_hp_scale)
-        enemy_castle_hp = cat_castle_hp if pvp_mode else self.stage_config.get("enemy_castle_hp", 500)
+        def _calc_native_castle_hp(lv: int) -> int:
+            ab = max(0, int(lv) - 1)
+            if ab <= 3:
+                return 1000 + 1000 * ab
+            if ab <= 7:
+                return -2000 + 2000 * ab
+            return -9000 + 3000 * ab
+
+        t0_castle_lv = base_levels.get("castle_hp", 1)
+        t1_castle_lv = (p2_base_levels or {}).get("castle_hp", t0_castle_lv)
+        if "cat_castle_hp" in self.stage_config and t0_castle_lv == 1 and "castle_hp" not in base_levels:
+            cat_castle_hp = int(self.stage_config["cat_castle_hp"])
+        else:
+            cat_castle_hp = _calc_native_castle_hp(t0_castle_lv)
+        if pvp_mode:
+            if p2_base_levels is not None and "castle_hp" in p2_base_levels:
+                enemy_castle_hp = _calc_native_castle_hp(t1_castle_lv)
+            else:
+                enemy_castle_hp = cat_castle_hp
+        else:
+            enemy_castle_hp = self.stage_config.get("enemy_castle_hp", 500)
         
         # Authentic Battle Cats layout:
-        # Team 1 (Enemy / Player 2) Castle is on the LEFT (pos_x = 120)
-        # Team 0 (Cat / Player 1) Castle is on the RIGHT (pos_x = battlefield_length - 120)
+        # Authentic PONOS stage edge offset (0x8b6dec): 0xaf0 = 2800 native = 700.0 DU from stage borders
+        castle_margin = min(CASTLE_EDGE_OFFSET_DU, max(120.0, self.battlefield_length * 0.25))
+        # Team 1 (Enemy / Player 2) Castle is on the LEFT (pos_x = 700 DU)
+        # Team 0 (Cat / Player 1) Castle is on the RIGHT (pos_x = battlefield_length - 700 DU)
         self.units[TEAM_CAT][SLOT_CASTLE] = SimUnit(
             team=TEAM_CAT, slot=SLOT_CASTLE, unit_key="cat_castle",
             spec={"name": "貓咪軍團主堡", "hp": cat_castle_hp, "attack_power": 0, "attack_range": 0, "speed": 0, "knockback_count": 1, "radius": 50, "color": (230, 230, 240), "texture_code": "fc000"},
-            pos_x=self.battlefield_length - 120
+            pos_x=self.battlefield_length - castle_margin
         )
         self.units[TEAM_ENEMY][SLOT_CASTLE] = SimUnit(
             team=TEAM_ENEMY, slot=SLOT_CASTLE, unit_key="enemy_castle",
             spec={"name": "P2 軍團主堡" if pvp_mode else "敵方汪汪大本營", "hp": enemy_castle_hp, "attack_power": 0, "attack_range": 0, "speed": 0, "knockback_count": 1, "radius": 50, "color": (200, 160, 140), "texture_code": "ec000_tw"},
-            pos_x=120
+            pos_x=castle_margin
         )
 
         # Symmetrical Economy & Deployers for Team 0 (Right) and Team 1 (Left)
-        worker_lv = base_levels.get("worker_cat", 1)
-        self.wallet = WorkerCatWallet(initial_money=150)
-        self.wallet.level = worker_lv
-        self. wallet._update_level_stats()
+        eff_lv = base_levels.get("worker_cat", 1)
+        wal_lv = base_levels.get("wallet", 1)
+        p2_eff_lv = (p2_base_levels or {}).get("worker_cat", eff_lv)
+        p2_wal_lv = (p2_base_levels or {}).get("wallet", wal_lv)
+
+        self.wallet = WorkerCatWallet(initial_money=0, efficiency_level=eff_lv, wallet_level=wal_lv)
         self.deployer = CatDeployer(deck_keys=deck, cat_levels=cat_levels)
 
-        self.p2_wallet = WorkerCatWallet(initial_money=150)
-        self.p2_wallet.level = worker_lv
-        self.p2_wallet._update_level_stats()
+        self.p2_wallet = WorkerCatWallet(initial_money=0, efficiency_level=p2_eff_lv, wallet_level=p2_wal_lv)
         merged_p2_reg = dict(CAT_REGISTRY)
         merged_p2_reg.update(ENEMY_REGISTRY)
         self.p2_deployer = CatDeployer(
@@ -237,7 +264,7 @@ class BattleSimulation:
 
         self.spawner = StageWaveSpawner(self.stage_config)
 
-        # Cannon Foundation Types (normal, slow, iron_wall, thunderbolt, waterblast, breakerblast, curseblast)
+        # Cannon Foundation Types (normal, slow, iron_wall, thunderbolt, waterblast, holyblast, breakerblast, curseblast)
         if cannon_types is not None:
             self.cannon_types = dict(cannon_types)
         else:
@@ -250,66 +277,7 @@ class BattleSimulation:
         t1_tr = tr_mgr.calculate_battle_treasures(p2_treasures if p2_treasures is not None else (treasures if pvp_mode else {"eoc_chapters": 0, "trait_fruits": {}}))
         self.team_treasures = {TEAM_CAT: t0_tr, TEAM_ENEMY: t1_tr}
 
-        # Symmetrical Cat Cannon Controllers
-        cannon_charge_lv = base_levels.get("cannon_charge", 1)
-        cannon_pwr_lv = base_levels.get("cannon_power", 1)
-        self.cannon_charge: int = 0
-        self.p2_cannon_charge: int = 0
-        
-        # [REA-DEPRECATED-SYNTHETIC-PATCH: Area 1 - Removed fake 150-frame cannon charge]
-        # Restored to official Battle Cats Cannon Recharge formula:
-        # Base Lv 1: 2,850 frames (95.0s)
-        # Charge Level: -50 frames per level
-        # Power Level: +50 frames per level
-        # EoC Treasures (Hokkaido): -150 frames per chapter (up to -450 frames for 3 chapters)
-        # Hard Minimum Floor: 950 frames (31.67s)
-        nominal_charge_t0 = 2850 - 50 * (cannon_charge_lv - 1) + 50 * (cannon_pwr_lv - 1) - t0_tr.get("cannon_charge_reduction", 0)
-        self.cannon_max_charge: int = max(950, nominal_charge_t0)
-        
-        p2_charge_lv = (p2_base_levels or {}).get("cannon_charge", cannon_charge_lv)
-        p2_pwr_lv = (p2_base_levels or {}).get("cannon_power", cannon_pwr_lv)
-        nominal_charge_t1 = 2850 - 50 * (p2_charge_lv - 1) + 50 * (p2_pwr_lv - 1) - t1_tr.get("cannon_charge_reduction", 0)
-        self.p2_cannon_max_charge: int = max(950, nominal_charge_t1)
-        
-        # Authentic PONOS Cat Cannon Range: 2355 DU base at Lv 1, +405 DU / level, Max Lv 10 = 6000 DU
-        c_range_lv = base_levels.get("cannon_range", 10)
-        p2_c_range_lv = (p2_base_levels or {}).get("cannon_range", 10)
-        self.cannon_ranges = {
-            TEAM_CAT: min(6000, 2355 + 405 * (c_range_lv - 1)),
-            TEAM_ENEMY: min(6000, 2355 + 405 * (p2_c_range_lv - 1)),
-        }
-        self.cannon_range: int = self.cannon_ranges[TEAM_CAT]
-        self.cannon_power: int = 250 + (cannon_pwr_lv - 1) * 50 + t0_tr["cannon_power_bonus"]
-        self.cannon_anim_timer: Dict[int, int] = {TEAM_CAT: 0, TEAM_ENEMY: 0}
-        self.active_cannon_waves: List[Dict[str, Any]] = []
-        self.active_waves: List[Dict[str, Any]] = []
-        self.active_surges: List[Dict[str, Any]] = []
-
-        # Symmetrical Accounting bounty multipliers for Team 0 and Team 1
-        t0_acct = base_levels.get("accounting", 1)
-        t1_acct = (p2_base_levels or {}).get("accounting", 1)
-        self.accounting_level = t0_acct
-        self.wallet_multipliers = {
-            TEAM_CAT: (1.0 + 0.1 * (t0_acct - 1)) * t0_tr["bounty_mult"],
-            TEAM_ENEMY: (1.0 + 0.1 * (t1_acct - 1)) * t1_tr["bounty_mult"],
-        }
-        self.wallet_multiplier = self.wallet_multipliers[TEAM_CAT]
-
-        # Apply Treasure bonuses to Castle HP & Wallet
-        cat_c = self.units[TEAM_CAT][SLOT_CASTLE]
-        cat_c.max_hp += t0_tr["castle_hp_bonus"]
-        cat_c.hp = cat_c.max_hp
-        self.wallet.set_treasure_bonuses(rate_mult=t0_tr["worker_rate_mult"], cap_bonus=t0_tr["wallet_cap_bonus"])
-
-        if self.pvp_mode:
-            p2_c = self.units[TEAM_ENEMY][SLOT_CASTLE]
-            p2_c.max_hp += t1_tr["castle_hp_bonus"]
-            p2_c.hp = p2_c.max_hp
-            self.p2_wallet.set_treasure_bonuses(rate_mult=t1_tr["worker_rate_mult"], cap_bonus=t1_tr["wallet_cap_bonus"])
-
-        self.slow_motion_timer: int = 0
-
-        # Evaluate & apply authentic Nyancombos for Team 0 (Cat / Player 1) and Team 1 (in PvP)
+        # Evaluate Nyancombos before Economy/Cannon init (so 0x47a29c/0x47a3a4 & AddMoney see exact active combos)
         combo_mgr = NyancomboManager.get_instance()
         def _resolve_deck_form(k: Any) -> Optional[Tuple[int, int]]:
             if k is None:
@@ -325,54 +293,108 @@ class BattleSimulation:
             return (cid, form)
 
         t0_deck_forms = [_resolve_deck_form(k) for k in (deck or [])[:5]]
-        t0_active_combos = combo_mgr.evaluate_deck(t0_deck_forms)
-        self.team_combo_effects = {
-            TEAM_CAT: combo_mgr.calculate_combo_effects(t0_active_combos),
-            TEAM_ENEMY: combo_mgr.calculate_combo_effects([]),
-        }
-
-        # Apply Team 0 combo effects
-        t0_eff = self.team_combo_effects[TEAM_CAT]
-        if t0_eff["initial_money"] > 0:
-            self.wallet.money += t0_eff["initial_money"]
-        if t0_eff["worker_level"] > 0:
-            self.wallet.level += t0_eff["worker_level"]
-            self.wallet._update_level_stats()
-        self.wallet_multipliers[TEAM_CAT] *= t0_eff["accounting_mult"]
-        self.wallet_multiplier = self.wallet_multipliers[TEAM_CAT]
-        if t0_eff["cannon_charge_rate"] > 0:
-            self.cannon_charge = int(self.cannon_max_charge * t0_eff["cannon_charge_rate"])
-        if t0_eff["cannon_power_mult"] != 1.0:
-            self.cannon_power = int(self.cannon_power * t0_eff["cannon_power_mult"])
-        if t0_eff["castle_hp_mult"] != 1.0:
-            cat_c = self.units[TEAM_CAT][SLOT_CASTLE]
-            cat_c.max_hp = int(cat_c.max_hp * t0_eff["castle_hp_mult"])
-            cat_c.hp = cat_c.max_hp
-
+        t0_eff = combo_mgr.calculate_combo_effects(combo_mgr.evaluate_deck(t0_deck_forms))
+        t1_eff = combo_mgr.calculate_combo_effects([])
         if self.pvp_mode:
             p2_deck_list = p2_deck if p2_deck is not None else deck
             t1_deck_forms = [_resolve_deck_form(k) for k in (p2_deck_list or [])[:5]]
-            t1_active_combos = combo_mgr.evaluate_deck(t1_deck_forms)
-            self.team_combo_effects[TEAM_ENEMY] = combo_mgr.calculate_combo_effects(t1_active_combos)
-            t1_eff = self.team_combo_effects[TEAM_ENEMY]
-            if t1_eff["initial_money"] > 0:
-                self.p2_wallet.money += t1_eff["initial_money"]
-            if t1_eff["worker_level"] > 0:
-                self.p2_wallet.level += t1_eff["worker_level"]
-                self.p2_wallet._update_level_stats()
-            self.wallet_multipliers[TEAM_ENEMY] *= t1_eff.get("accounting_mult", 1.0)
-            if t1_eff["cannon_charge_rate"] > 0:
-                self.p2_cannon_charge = int(self.cannon_max_charge * t1_eff["cannon_charge_rate"])
-            if t1_eff["castle_hp_mult"] != 1.0:
-                p2_c = self.units[TEAM_ENEMY][SLOT_CASTLE]
-                p2_c.max_hp = int(p2_c.max_hp * t1_eff["castle_hp_mult"])
-                p2_c.hp = p2_c.max_hp
+            t1_eff = combo_mgr.calculate_combo_effects(combo_mgr.evaluate_deck(t1_deck_forms))
+        self.team_combo_effects = {TEAM_CAT: t0_eff, TEAM_ENEMY: t1_eff}
 
-        # Apply EoC treasure and Nyancombo cooldown reduction to deployers
-        t0_cd_reduct = t0_tr.get("cooldown_reduction", 0) + t0_eff.get("cooldown_reduction", 0)
+        # Symmetrical Cat Cannon Controllers (Native ARM64 0x47a29c & 0x47a3a4)
+        cannon_charge_lv = base_levels.get("cannon_charge", 1)
+        cannon_pwr_lv = base_levels.get("cannon_power", 1)
+        c_range_lv = base_levels.get("cannon_range", 1)
+
+        p2_charge_lv = (p2_base_levels or {}).get("cannon_charge", cannon_charge_lv)
+        p2_pwr_lv = (p2_base_levels or {}).get("cannon_power", cannon_pwr_lv)
+        p2_c_range_lv = (p2_base_levels or {}).get("cannon_range", c_range_lv)
+
+        self.cannon_max_charge: int = self._calc_cannon_max_charge(
+            self.cannon_types.get(TEAM_CAT, "normal"), c_range_lv, cannon_charge_lv, t0_tr,
+            combo_recharge_pct=int(round(t0_eff.get("cannon_recharge_pct", 0.0))),
+        )
+        self.p2_cannon_max_charge: int = self._calc_cannon_max_charge(
+            self.cannon_types.get(TEAM_ENEMY, "normal"), p2_c_range_lv, p2_charge_lv, t1_tr,
+            combo_recharge_pct=int(round(t1_eff.get("cannon_recharge_pct", 0.0))),
+        )
+        self.cannon_charge: int = self._calc_cannon_init_charge(
+            self.cannon_max_charge, int(round(t0_eff.get("cannon_charge_rate", 0.0) * 100))
+        )
+        self.p2_cannon_charge: int = (
+            self._calc_cannon_init_charge(
+                self.p2_cannon_max_charge, int(round(t1_eff.get("cannon_charge_rate", 0.0) * 100))
+            )
+            if self.pvp_mode
+            else 0
+        )
+
+        # Authentic PONOS Cat Cannon Range (DU = native / 4):
+        # 2355 / 4 = 588.75 DU base at Lv 1, +101.25 DU / level (+405/4), Max Lv 10 = 6000 / 4 = 1500.0 DU
+        self.cannon_ranges = {
+            TEAM_CAT: min(1500.0, (2355 + 405 * (c_range_lv - 1)) / 4.0),
+            TEAM_ENEMY: min(1500.0, (2355 + 405 * (p2_c_range_lv - 1)) / 4.0),
+        }
+        self.cannon_range: float = self.cannon_ranges[TEAM_CAT]
+        t0_base_pwr = 100 if (cannon_pwr_lv > 1 or "cannon_power" in base_levels) else 250
+        t1_base_pwr = 100 if (p2_pwr_lv > 1 or "cannon_power" in (p2_base_levels or {})) else 250
+        self.cannon_powers = {
+            TEAM_CAT: int((t0_base_pwr + (cannon_pwr_lv - 1) * 50 + t0_tr["cannon_power_bonus"]) * t0_eff["cannon_power_mult"]),
+            TEAM_ENEMY: int((t1_base_pwr + (p2_pwr_lv - 1) * 50 + t1_tr["cannon_power_bonus"]) * t1_eff["cannon_power_mult"]),
+        }
+        self.cannon_power: int = self.cannon_powers[TEAM_CAT]
+        self.cannon_anim_timer: Dict[int, int] = {TEAM_CAT: 0, TEAM_ENEMY: 0}
+        self.active_cannon_waves: List[Dict[str, Any]] = []
+        self.active_waves: List[Dict[str, Any]] = []
+        self.active_surges: List[Dict[str, Any]] = []
+        self.active_explosions: List[Dict[str, Any]] = []
+        self._surge_id_seq: int = 0
+
+        # Symmetrical Accounting bounty multipliers for Team 0 and Team 1
+        t0_acct = base_levels.get("accounting", 1)
+        t1_acct = (p2_base_levels or {}).get("accounting", 1)
+        self.accounting_level = t0_acct
+        self.wallet_multipliers = {
+            TEAM_CAT: (t0_tr["bounty_mult"] + 0.05 * max(0, t0_acct - 1)) * t0_eff["accounting_mult"],
+            TEAM_ENEMY: (t1_tr["bounty_mult"] + 0.05 * max(0, t1_acct - 1)) * (t1_eff.get("accounting_mult", 1.0) if self.pvp_mode else 1.0),
+        }
+        self.wallet_multiplier = self.wallet_multipliers[TEAM_CAT]
+
+        # Apply Treasure & Nyancombo bonuses to Castle HP & Wallet symmetrically
+        teams_to_init = [TEAM_CAT, TEAM_ENEMY] if self.pvp_mode else [TEAM_CAT]
+        for t_id in teams_to_init:
+            tr = self.team_treasures[t_id]
+            eff = self.team_combo_effects[t_id]
+            castle_u = self.units[t_id][SLOT_CASTLE]
+            castle_u.max_hp += tr["castle_hp_bonus"]
+            if eff["castle_hp_mult"] != 1.0:
+                castle_u.max_hp = int(castle_u.max_hp * eff["castle_hp_mult"])
+            castle_u.hp = castle_u.max_hp
+
+            w = self.wallets[t_id]
+            w.set_treasure_bonuses(
+                rate_mult=tr["worker_rate_mult"],
+                cap_bonus=tr["wallet_cap_bonus"],
+                tr3_centi=tr.get("worker_income_bonus_centi"),
+                tr4_centi=tr.get("wallet_cap_bonus_centi"),
+            )
+            if eff["worker_level"] > 0:
+                w.level = min(w.max_level, w.level + eff["worker_level"])
+                w._update_level_stats()
+            if eff["initial_money"] > 0:
+                w.add_money(eff["initial_money"])
+
+        self.slow_motion_timer: int = 0
+
+        # Apply EoC treasure, Cat Research (native 0x47aa0c: 6*(lv-1)f), and Nyancombo cooldown reduction to deployers
+        self.research_reductions = {
+            TEAM_CAT: 6 * max(0, int(base_levels.get("research", 1)) - 1),
+            TEAM_ENEMY: 6 * max(0, int((p2_base_levels or {}).get("research", 1)) - 1),
+        }
+        t0_cd_reduct = t0_tr.get("cooldown_reduction", 0) + t0_eff.get("cooldown_reduction", 0) + self.research_reductions[TEAM_CAT]
         self.deployer.apply_cooldown_reduction(t0_cd_reduct)
         if self.pvp_mode:
-            t1_cd_reduct = t1_tr.get("cooldown_reduction", 0) + self.team_combo_effects[TEAM_ENEMY].get("cooldown_reduction", 0)
+            t1_cd_reduct = t1_tr.get("cooldown_reduction", 0) + self.team_combo_effects[TEAM_ENEMY].get("cooldown_reduction", 0) + self.research_reductions[TEAM_ENEMY]
             self.p2_deployer.apply_cooldown_reduction(t1_cd_reduct)
 
         # Frame Events for Renderer (preserved across pre-step user input & step())
@@ -395,6 +417,42 @@ class BattleSimulation:
         self._pending_visual_events.clear()
         return events
 
+    _CANNON_TYPE_INDICES = {
+        "normal": 0,
+        "slow": 1,
+        "iron_wall": 2,
+        "thunderbolt": 3,
+        "waterblast": 4,
+        "holyblast": 5,
+        "breakerblast": 6,
+        "curseblast": 7,
+    }
+
+    @classmethod
+    def _calc_cannon_max_charge(
+        cls,
+        ctype: str,
+        range_lv: int,
+        charge_lv: int,
+        treasures: Dict[str, Any],
+        combo_recharge_pct: int = 0,
+    ) -> int:
+        """Native ARM64 0x47a29c: exact integer Cat Cannon max charge in frames."""
+        c_idx = cls._CANNON_TYPE_INDICES.get(ctype, 0)
+        c_bonus = c_idx * 450 if c_idx <= 2 else 1350
+        lv_range = max(0, int(range_lv) - 1)
+        lv_charge = max(0, int(charge_lv) - 1)
+        tr_range = int(treasures.get("cannon_range_charge_reduction", 0))
+        tr_charge = int(treasures.get("cannon_charge_reduction", 0))
+        raw = 1500 + c_bonus + max(0, 50 * lv_range - tr_range) - 50 * lv_charge - tr_charge
+        return max(950, (raw * (100 - int(combo_recharge_pct))) // 100)
+
+    @staticmethod
+    def _calc_cannon_init_charge(max_charge: int, init_pct: int) -> int:
+        """Native ARM64 0x47a3a4: remaining cooldown = ((100 - pct) * max) // 100."""
+        remaining = max(0, ((100 - int(init_pct)) * int(max_charge)) // 100)
+        return max(0, int(max_charge) - remaining)
+
     def is_cannon_ready(self, team: int = TEAM_CAT) -> bool:
         charge = self.cannon_charge if team == TEAM_CAT else self.p2_cannon_charge
         max_ch = self.cannon_max_charge if team == TEAM_CAT else getattr(self, "p2_cannon_max_charge", self.cannon_max_charge)
@@ -413,19 +471,22 @@ class BattleSimulation:
         ctype = self.cannon_types.get(team, "normal")
 
         c_range = self.cannon_ranges.get(team, self.cannon_range)
+        c_enemy_x = self.get_castle(TEAM_ENEMY).pos_x
+        c_cat_x = self.get_castle(TEAM_CAT).pos_x
         if team == TEAM_CAT:
             self.cannon_charge = 0
             c_unit = self.get_castle(TEAM_CAT)
-            beam_start_x = c_unit.pos_x - 30
-            beam_end_x = max(60, beam_start_x - c_range)
+            # Native 0x4aecec muzzle offset: 270 native = 67.5 DU in front of castle edge
+            beam_start_x = c_unit.pos_x - 67.5
+            beam_end_x = max(0.0, beam_start_x - c_range)
             min_x, max_x = beam_end_x, beam_start_x
             opp_team = TEAM_ENEMY
             direction = -1
         else:
             self.p2_cannon_charge = 0
             c_unit = self.get_castle(TEAM_ENEMY)
-            beam_start_x = c_unit.pos_x + 30
-            beam_end_x = min(self.battlefield_length - 60, beam_start_x + c_range)
+            beam_start_x = c_unit.pos_x + 67.5
+            beam_end_x = min(float(self.battlefield_length), beam_start_x + c_range)
             min_x, max_x = beam_start_x, beam_end_x
             opp_team = TEAM_CAT
             direction = 1
@@ -458,7 +519,7 @@ class BattleSimulation:
                     "traits": ["metal"],
                     "abilities": {"is_metal": True, "kb_immune": True},
                     "texture_code": "000_f",
-                    "render_scale": 0.55,
+                    "render_scale": UNIT_RENDER_SCALE,
                     "cost": 0,
                     "money_drop": 0,
                     "attack_power": 0,
@@ -505,11 +566,14 @@ class BattleSimulation:
             strike_max = strike_x + 125
 
             hit_count = 0
+            opp_dir = -1 if opp_team == TEAM_CAT else 1
             for slot in range(1, MAX_UNITS_PER_TEAM):
                 u = self.units[opp_team][slot]
-                if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and strike_min <= u.pos_x <= strike_max:
-                    self._cannon_hit(u, opp_team, ctype="thunderbolt")
-                    hit_count += 1
+                if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback():
+                    u_front = u.pos_x - opp_dir * getattr(u, "hitbox_front", 0)
+                    if strike_min <= u_front < strike_max or strike_min <= u.pos_x <= strike_max:
+                        self._cannon_hit(u, opp_team, ctype="thunderbolt")
+                        hit_count += 1
 
             self._emit_event({
                 "type": "cannon_beam",
@@ -531,7 +595,7 @@ class BattleSimulation:
 
         # Standard / Slow / Waterblast / Breakerblast / Curseblast sweeping beams
         # Progressive wavefront model:
-        # Initial frame 0 hits units within the muzzle blast reach (~120px)
+        # Initial frame 0 hits units within the muzzle blast reach (native 0x4c5e0c checks target front edge)
         dist = abs(beam_end_x - beam_start_x)
         init_reach_x = beam_start_x + direction * min(dist, 120.0)
         curr_min_x = min(beam_start_x, init_reach_x)
@@ -539,12 +603,15 @@ class BattleSimulation:
 
         hit_ids = set()
         hit_count = 0
+        opp_dir = -1 if opp_team == TEAM_CAT else 1
         for slot in range(1, MAX_UNITS_PER_TEAM):
             u = self.units[opp_team][slot]
-            if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and curr_min_x <= u.pos_x <= curr_max_x:
-                self._cannon_hit(u, opp_team, ctype=ctype)
-                hit_ids.add(id(u))
-                hit_count += 1
+            if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback():
+                u_front = u.pos_x - opp_dir * getattr(u, "hitbox_front", 0)
+                if curr_min_x <= u_front <= curr_max_x or curr_min_x <= u.pos_x <= curr_max_x:
+                    self._cannon_hit(u, opp_team, ctype=ctype)
+                    hit_ids.add(id(u))
+                    hit_count += 1
 
         self.active_cannon_waves.append({
             "team": team,
@@ -578,17 +645,28 @@ class BattleSimulation:
     def get_castle(self, team: int) -> SimUnit:
         return self.units[team][SLOT_CASTLE]
 
-    def _knockback(self, u: SimUnit, kind: str = "kb") -> bool:
-        """Starts an authentic PONOS interrupt knockback (distance/duration from KB_SPECS).
+    def _knockback(self, u: SimUnit, kind: str = "kb", tr_kb_permille: int = 0) -> bool:
+        """Starts an authentic PONOS interrupt knockback (KB_SPECS & native 0x5dd600 State 6).
         A unit already being knocked back is not restarted by an equal/shorter knockback."""
         if u is None or u.slot == SLOT_CASTLE:
             return False
         dist, frames = KB_SPECS.get(kind, KB_SPECS["kb"])
         if u.is_in_knockback() and frames <= u.knockback_timer:
             return False
-        u.kb_distance = float(dist)
+        u.kb_kind = kind
+        u.kb_tr_permille = int(tr_kb_permille)
+        if kind == "kb":
+            # Native 0x5dd600 State 6: 12 frames with base ((12 - f) % 12) * 10 native units (/4 -> DU)
+            total_native = sum(
+                (base := ((12 - f) % 12) * 10) + (base * u.kb_tr_permille) // 1000
+                for f in range(1, 13)
+            )
+            u.kb_distance = total_native / 4.0
+        else:
+            u.kb_distance = float(dist)
         u.kb_total_frames = int(frames)
         u.kb_elapsed = 0
+        u.kb_y = 0.0
         u.knockback_timer = int(frames)
         u.anim_state = "kb"
         u.anim_frame = 0.0
@@ -600,8 +678,10 @@ class BattleSimulation:
         # Authentic Battle Cats knockback interrupt:
         # Cancels windup/backswing, and resets attack cycle timer so the unit can attack immediately
         # upon recovery once in range (rebound effect).
+        u.tba_timer = 0
         u.cycle_timer = 0
         u.attack_cooldown_timer = 0
+        u.swing_procs = None
         if kind == "hitback" and u.abilities.get("shield_hp", 0) > 0 and u.abilities.get("shield_regen_pct", 0) > 0 and not getattr(u, "is_dying", False):
             regen_pct = u.abilities["shield_regen_pct"]
             base_shield = u.abilities["shield_hp"]
@@ -610,47 +690,49 @@ class BattleSimulation:
         return True
 
     def _cannon_hit(self, u: SimUnit, opp_team: int, ctype: str = "normal"):
+        # Native 0x4c6340:58 checks 0x958fe8 targetability (skip units already in KB/death/warp)
+        if u is None or u.slot == SLOT_CASTLE or not u.is_alive or u.is_in_knockback() or getattr(u, "is_dying", False) or getattr(u, "is_corpse", False) or getattr(u, "is_warped", False):
+            return
+        dmg = 0
         if ctype == "slow":
-            # Authentic PONOS Slowbeam: 0 damage, 0 knockback, pure 120-frame Slow
+            # Native 0x4c6340: 0 damage, 0 knockback, direct 120-frame Slow write
             if not u.abilities.get("slow_immune", False):
-                u.slow_timer = max(u.slow_timer, 120)
+                u.slow_timer = 120
                 self._emit_event({"type": "slow", "x": u.pos_x, "team": opp_team})
 
         elif ctype == "curseblast":
-            # Authentic PONOS Curseblast: 0 damage, 0 knockback, pure 180-frame Curse
+            # Native 0x4c6340: 0 damage, 0 knockback, direct 180-frame Curse write
             if not u.abilities.get("curse_immune", False):
-                u.curse_timer = max(u.curse_timer, 180)
+                u.curse_timer = 180
                 self._emit_event({"type": "curse", "x": u.pos_x, "team": opp_team})
 
         elif ctype == "thunderbolt":
-            dmg = self.cannon_power
+            # Native 0x4c6340 + 0x5cbf84: direct 75-frame Freeze write; pauses attack windup without cancelling
+            c_pwr = self.cannon_powers.get(1 - opp_team, self.cannon_power)
+            dmg = c_pwr
             u.hp -= dmg
             if not u.abilities.get("freeze_immune", False):
-                u.freeze_timer = max(u.freeze_timer, 75)
-                u.is_winding_up = False
-                u.windup_timer = 0
-                u.backswing_timer = 0
+                u.freeze_timer = 75
             self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
         elif ctype == "waterblast":
+            # Native 0x4c6340 (type 4): integer permille of max_hp (30% vs Metal, 5% vs Non-Metal), no KB
             if "metal" in u.traits or u.abilities.get("is_metal", False):
-                dmg = max(1, int(u.max_hp * 0.30))
+                dmg = max(1, (u.max_hp * 300) // 1000)
             else:
-                dmg = max(1, self.cannon_power // 4)
+                dmg = max(1, (u.max_hp * 50) // 1000)
             u.hp -= dmg
-            if not u.abilities.get("kb_immune", False):
-                self._knockback(u, "cannon")
-                self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
             self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
         elif ctype == "breakerblast":
+            c_pwr = self.cannon_powers.get(1 - opp_team, self.cannon_power)
             if getattr(u, "aku_shield", 0) > 0:
                 u.aku_shield = 0
                 self._emit_event({"type": "shield_break", "x": u.pos_x, "team": opp_team})
             if getattr(u, "barrier", 0) > 0:
                 u.barrier = 0
                 self._emit_event({"type": "barrier_break", "x": u.pos_x, "team": opp_team})
-            dmg = max(1, self.cannon_power // 2)
+            dmg = max(1, c_pwr // 2)
             u.hp -= dmg
             if not u.abilities.get("kb_immune", False):
                 self._knockback(u, "cannon")
@@ -662,12 +744,12 @@ class BattleSimulation:
             # but is completely blocked/nullified by wave_immune or wave_blocker!
             if u.abilities.get("wave_immune", False) or u.abilities.get("wave_blocker", False):
                 return
-            dmg = 1 if ("metal" in u.traits or u.abilities.get("is_metal")) else self.cannon_power
+            c_pwr = self.cannon_powers.get(1 - opp_team, self.cannon_power)
+            dmg = 1 if ("metal" in u.traits or u.abilities.get("is_metal")) else c_pwr
             u.hp -= dmg
             self._knockback(u, "cannon")
             self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": opp_team, "kind": "cannon"})
             self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
-            self._emit_event({"type": "damage", "x": u.pos_x, "radius": u.radius, "damage": dmg, "is_crit": True, "team": opp_team, "target_id": f"{opp_team}_{u.slot}"})
 
         if u.hp <= 0 and u.slot != SLOT_CASTLE and not getattr(u, "is_dying", False):
             u.hp = 0
@@ -686,6 +768,13 @@ class BattleSimulation:
                 u.boss_death_triggered = True
                 self.slow_motion_timer = BOSS_DEATH_SLOWMO_FRAMES
                 self._emit_event({"type": "boss_death", "x": u.pos_x, "team": u.team, "name": u.name, "boss_name": u.name})
+        elif u.hp > 0 and dmg > 0:
+            damage_taken = u.max_hp - u.hp
+            expected_kbs = int(damage_taken // max(1.0, u.kb_threshold))
+            if expected_kbs > u.kb_points_taken:
+                u.kb_points_taken = expected_kbs
+                self._knockback(u, "hitback")
+                self._emit_event({"type": "knockback", "x": u.pos_x, "radius": u.radius, "team": u.team, "kind": "hitback"})
 
     def find_free_slot(self, team: int) -> Optional[int]:
         """Finds first empty slot in [1, 50]. Slot 0 reserved for Castle."""
@@ -714,7 +803,7 @@ class BattleSimulation:
         wallet.spend(cost)
         combo_eff = self.team_combo_effects.get(team, {})
         team_tr = self.team_treasures.get(team, {})
-        cd_reduct = combo_eff.get("cooldown_reduction", 0) + team_tr.get("cooldown_reduction", 0)
+        cd_reduct = combo_eff.get("cooldown_reduction", 0) + team_tr.get("cooldown_reduction", 0) + self.research_reductions.get(team, 0)
         deployer.trigger_cooldown(deck_idx, reduction_frames=cd_reduct)
 
         unit_key = slot_info["key"]
@@ -880,6 +969,7 @@ class BattleSimulation:
             cw["elapsed"] = cw.get("elapsed", 0) + 1
             if cw["timer"] > 0:
                 opp_t = cw["opp_team"]
+                opp_dir = -1 if opp_t == TEAM_CAT else 1
                 # Sweeping wavefront advances across 14 frames matching visual pillars
                 progress = min(1.0, cw["elapsed"] / 14.0)
                 current_reach_x = cw["start_x"] + cw["direction"] * (cw["dist"] * progress)
@@ -887,9 +977,11 @@ class BattleSimulation:
                 span_max_x = max(cw["start_x"], current_reach_x)
                 for slot in range(1, MAX_UNITS_PER_TEAM):
                     u = self.units[opp_t][slot]
-                    if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and id(u) not in cw["hit_ids"] and span_min_x <= u.pos_x <= span_max_x:
-                        self._cannon_hit(u, opp_t, ctype=cw.get("cannon_type", "normal"))
-                        cw["hit_ids"].add(id(u))
+                    if u and u.is_alive and not getattr(u, 'is_burrowing', False) and not getattr(u, 'is_corpse', False) and not getattr(u, 'is_warped', False) and not u.is_in_knockback() and id(u) not in cw["hit_ids"]:
+                        u_front = u.pos_x - opp_dir * getattr(u, "hitbox_front", 0)
+                        if span_min_x <= u_front <= span_max_x or span_min_x <= u.pos_x <= span_max_x:
+                            self._cannon_hit(u, opp_t, ctype=cw.get("cannon_type", "normal"))
+                            cw["hit_ids"].add(id(u))
                 cw["prev_reach_x"] = current_reach_x
                 remaining_waves.append(cw)
         self.active_cannon_waves = remaining_waves
@@ -897,8 +989,11 @@ class BattleSimulation:
         # Advance travelling wave attacks (one segment every WAVE_SEG_FRAMES frames)
         self._update_waves()
 
-        # Advance travelling surge attacks (duration 20 * level frames, tick every 20 frames)
+        # Advance surge attacks (15f spawn delay, ticks every 20f, 10f linger)
         self._update_surges()
+
+        # Advance 3-ring explosion attacks (native 0x4c3f24)
+        self._update_explosions()
 
         # 1. Update Team 0 wallet, cooldowns & cannon charging
         self.wallet.update()
@@ -910,7 +1005,7 @@ class BattleSimulation:
         if self.pvp_mode:
             self.p2_wallet.update()
             self.p2_deployer.update()
-            if self.p2_cannon_charge < self.cannon_max_charge:
+            if self.p2_cannon_charge < self.p2_cannon_max_charge:
                 self.p2_cannon_charge += 1
         else:
             enemy_castle = self.get_castle(TEAM_ENEMY)
@@ -932,17 +1027,38 @@ class BattleSimulation:
         self._in_step = False
 
     def _can_unit_target_opponent(self, attacker: SimUnit, opp: SimUnit) -> bool:
-        """Checks Attacks Only ability restriction (col 32) and un-targetable states (burrowing, corpse, dying, warped)."""
+        """Checks Attacks Only ability restriction (col 32), Soulstrike (col 98), and un-targetable states."""
         if opp.slot == SLOT_CASTLE:
             return True
-        if getattr(opp, "is_burrowing", False) or getattr(opp, "is_corpse", False) or getattr(opp, "is_dying", False) or getattr(opp, "is_warped", False) or opp.is_in_knockback():
+        if getattr(opp, "is_corpse", False):
+            # Native Soulstrike (col 98): allows targeting un-revived Zombie corpses
+            return bool(not attacker.is_cursed() and attacker.abilities.get("soul_strike", False))
+        if getattr(opp, "is_burrowing", False) or getattr(opp, "is_dying", False) or getattr(opp, "is_warped", False) or opp.is_in_knockback():
             return False
         if not attacker.is_cursed() and attacker.abilities.get("attacks_only", False) and attacker.target_traits:
             return any(t in opp.traits for t in attacker.target_traits)
         return True
 
-    def _is_opp_in_attack_box(self, attacker: SimUnit, opp: SimUnit, direction: int, hit_spec: Optional[dict] = None) -> Tuple[bool, int]:
-        """Checks if `opp` is within `attacker`'s attack range (supporting per-hit LD start/range if configured)."""
+    def _get_target_interval(self, opp: SimUnit) -> Tuple[float, float]:
+        """Returns target [t_min, t_max] hurtbox bounds matching native CheckRange (0x5ce084)."""
+        if opp.slot == SLOT_CASTLE:
+            return float(opp.pos_x), float(opp.pos_x)
+        opp_dir = -1 if opp.team == TEAM_CAT else 1
+        edge_front = opp.pos_x - opp_dir * getattr(opp, "hitbox_front", 0)
+        edge_back = opp.pos_x - opp_dir * getattr(opp, "hitbox_back", 320)
+        return min(edge_front, edge_back), max(edge_front, edge_back)
+
+    def _is_opp_in_standing_range(self, attacker: SimUnit, opp: SimUnit, direction: int) -> Tuple[bool, float]:
+        """Native CheckRange (0x5ce084, state != atk/LD): checks standing attack span vs target hurtbox."""
+        t_min, t_max = self._get_target_interval(opp)
+        e1 = attacker.pos_x
+        e2 = attacker.pos_x + direction * attacker.attack_range
+        atk_min, atk_max = min(e1, e2), max(e1, e2)
+        dist = (opp.pos_x - attacker.pos_x) * direction
+        return (atk_min <= t_max and atk_max >= t_min), dist
+
+    def _is_opp_in_attack_box(self, attacker: SimUnit, opp: SimUnit, direction: int, hit_spec: Optional[dict] = None) -> Tuple[bool, float]:
+        """Native CheckRange (0x5ce084): Normal attack checks target hurtbox; LD/Omni checks target center pos_x."""
         dist = (opp.pos_x - attacker.pos_x) * direction
         ld_start = attacker.abilities.get("ld_start", 0)
         ld_range = attacker.abilities.get("ld_range", 0)
@@ -950,10 +1066,20 @@ class BattleSimulation:
             ld_start = hit_spec.get("ld_start", ld_start)
             ld_range = hit_spec.get("ld_range", ld_range)
         if ld_range != 0:
-            min_r = min(ld_start, ld_start + ld_range)
-            max_r = max(ld_start, ld_start + ld_range)
-            return (min_r <= dist <= max_r), dist
-        return (0 <= dist <= attacker.attack_range), dist
+            p1 = attacker.pos_x + direction * ld_start
+            p2 = attacker.pos_x + direction * (ld_start + ld_range)
+            atk_min, atk_max = min(p1, p2), max(p1, p2)
+            if opp.slot == SLOT_CASTLE:
+                # Castle extends behind its front line so LD/Omni units standing near the castle still hit it
+                c_min, c_max = (-2000.0, float(opp.pos_x)) if opp.team == TEAM_ENEMY else (float(opp.pos_x), float(self.battlefield_length) + 2000.0)
+                return (atk_min <= c_max and atk_max >= c_min), dist
+            # Native 0x5ce084 L144-166: LD/Omni checks opp center pos_x (+0x83914)
+            return (atk_min <= opp.pos_x <= atk_max), dist
+        t_min, t_max = self._get_target_interval(opp)
+        e1 = attacker.pos_x
+        e2 = attacker.pos_x + direction * attacker.attack_range
+        atk_min, atk_max = min(e1, e2), max(e1, e2)
+        return (atk_min <= t_max and atk_max >= t_min), dist
 
     def _update_movement(self):
         """
@@ -976,7 +1102,7 @@ class BattleSimulation:
                 if unit is None or (not unit.is_alive and not unit.is_dying):
                     continue
 
-                # Knockback handling: authentic PONOS constant velocity displacement (~15 DU / frame)
+                # Knockback handling: native ARM64 KB trajectories in Battle Cats DU
                 if unit.is_in_knockback():
                     unit.is_moving = False
                     unit.is_winding_up = False
@@ -984,18 +1110,43 @@ class BattleSimulation:
                     unit.backswing_timer = 0
                     total = max(1, unit.kb_total_frames or KNOCKBACK_FRAMES_DEFAULT)
                     dist = unit.kb_distance or KB_SPECS["kb"][0]
-                    # Authentic PONOS constant-velocity displacement: fixed displacement per frame
-                    dx = dist / float(total)
                     unit.kb_elapsed += 1
                     unit.knockback_timer -= 1
+                    kind = getattr(unit, "kb_kind", "")
+                    if kind == "kb":
+                        # Native 0x5dd600 State 6: decelerating ((12 - elapsed) % 12) * 10 native units (/4 -> DU), horizontal only
+                        base_native = ((12 - unit.kb_elapsed) % 12) * 10
+                        tr_permille = getattr(unit, "kb_tr_permille", 0)
+                        dx = ((base_native * tr_permille) // 1000 + base_native) / 4.0
+                        unit.kb_y = 0.0
+                    elif unit.kb_elapsed < total:
+                        # Native 0x8b95b4 / 0x5dbc18: States 3 (24f), 5 (12f), 7 (48f) move on ticks 1..total-1 and exit on final tick when frame wraps to 0
+                        dx = dist / float(max(1, total - 1))
+                        if kind == "hitback":
+                            arc_idx = min(len(KB_Y_ARC_STATE3_DU) - 1, unit.kb_elapsed)
+                            unit.kb_y += KB_Y_ARC_STATE3_DU[arc_idx]
+                        elif kind == "boss":
+                            arc_idx = min(len(KB_Y_ARC_STATE3_DU) - 1, unit.kb_elapsed >> 1)
+                            unit.kb_y += KB_Y_ARC_STATE3_DU[arc_idx]
+                        elif kind == "cannon":
+                            arc_idx = min(len(KB_Y_ARC_STATE5_DU) - 1, unit.kb_elapsed)
+                            unit.kb_y += KB_Y_ARC_STATE5_DU[arc_idx]
+                        else:
+                            unit.kb_y = 0.0
+                    else:
+                        dx = 0.0
+                        unit.kb_y = 0.0
                     unit.pos_x -= direction * dx
                     unit.pos_x = max(c_enemy_x, min(c_cat_x, unit.pos_x))
+                    if unit.knockback_timer <= 0:
+                        unit.kb_y = 0.0
                     if unit.anim_state != "kb":
                         unit.anim_state = "kb"
                         unit.anim_frame = 0.0
                     else:
                         unit.anim_frame += 1.0
                     continue
+                unit.kb_y = 0.0
 
                 if unit.is_dying or getattr(unit, "is_corpse", False):
                     continue
@@ -1034,7 +1185,6 @@ class BattleSimulation:
 
                 if unit.freeze_timer > 0:
                     unit.is_moving = False
-                    unit.freeze_timer -= 1
                     continue
 
                 if unit.slow_timer > 0:
@@ -1045,20 +1195,23 @@ class BattleSimulation:
                     unit.is_moving = False
                     continue
 
-                # Find closest valid target ahead within standing attack_range
+                # Find closest valid target ahead within standing attack_range (native 0x5ce084)
                 closest_dist = 999999
                 target_ahead = False
+                in_standing_range = False
                 for opp in opp_units:
                     if not self._can_unit_target_opponent(unit, opp):
                         continue
-                    dist = (opp.pos_x - unit.pos_x) * direction
+                    in_stand, dist = self._is_opp_in_standing_range(unit, opp, direction)
+                    if in_stand:
+                        in_standing_range = True
                     if dist >= 0:
                         target_ahead = True
                         if dist < closest_dist:
                             closest_dist = dist
 
                 # Trigger burrow when encountering enemies in front
-                if getattr(unit, "burrow_left", 0) > 0 and target_ahead and closest_dist <= (unit.attack_range + 50):
+                if getattr(unit, "burrow_left", 0) > 0 and (in_standing_range or (target_ahead and closest_dist <= (unit.attack_range + 50))):
                     unit.is_burrowing = True
                     unit.burrow_left -= 1
                     unit.burrow_timer = 50
@@ -1067,8 +1220,8 @@ class BattleSimulation:
                     self._emit_event({"type": "burrow_down", "x": unit.pos_x, "team": unit.team})
                     continue
 
-                # If closest target within standing attack_range, stop and prepare/wait for attack
-                if target_ahead and closest_dist <= unit.attack_range:
+                # If any valid target hurtbox overlaps standing attack_range, stop and prepare/wait for attack
+                if in_standing_range:
                     unit.is_moving = False
                     if unit.anim_state != "idle":
                         unit.anim_state = "idle"
@@ -1088,15 +1241,36 @@ class BattleSimulation:
                     else:
                         unit.anim_frame += 1.0
 
+    def _roll_swing_procs(self, attacker: SimUnit) -> Dict[str, bool]:
+        """Native ARM64 0x5da618: pre-rolls all proc abilities ONCE per attack hit execution
+        and shares those booleans across every target, Wave segment, Surge tick, and Explosion ring."""
+        ab = attacker.abilities
+        def _roll(key: str) -> bool:
+            prob = ab.get(key, 0)
+            return bool(prob > 0 and self.rng.randint(1, 100) <= prob)
+        bb_prob = ab.get("barrier_break_prob", ab.get("barrier_breaker_prob", 0))
+        return {
+            "kb": _roll("kb_prob"),
+            "freeze": _roll("freeze_prob") if ab.get("freeze_dur", 0) > 0 else False,
+            "slow": _roll("slow_prob") if ab.get("slow_dur", 0) > 0 else False,
+            "crit": _roll("crit_prob"),
+            "weaken": _roll("weaken_prob") if ab.get("weaken_dur", 0) > 0 else False,
+            "savage": _roll("savage_blow_prob"),
+            "warp": _roll("warp_prob"),
+            "barrier_break": bool(bb_prob > 0 and self.rng.randint(1, 100) <= bb_prob),
+            "curse": _roll("curse_prob") if ab.get("curse_dur", 0) > 0 else False,
+            "toxic": _roll("toxic_prob") if ab.get("toxic_hp_pct", 0) > 0 else False,
+            "shield_pierce": _roll("shield_pierce_prob"),
+        }
+
     def _update_attacks(self):
         """
-        Authentic Ponos 4-Phase Attack State Machine:
-        1. If in backswing (`backswing_timer > 0`): tick down backswing and advance `anim_frame`.
-        2. If in foreswing (`is_winding_up`): tick down `windup_timer` and advance `anim_frame` regardless of whether enemies walked out of range!
-           When `windup_timer == 0`: deliver hit to enemies currently in attack hitbox, start `backswing_timer` and `attack_cooldown_timer`.
-        3. Otherwise (not in attack animation):
-           - Decrement `attack_cooldown_timer` (TBA ticks down even while walking!).
-           - If `attack_cooldown_timer == 0` and at least one valid target is within standing `attack_range`, begin foreswing (`is_winding_up = True`, `anim_frame = 0`).
+        Native PONOS Attack State Machine (0x5cbf84, 0x5dbc18, 0x5d9d6c, 0x5da618):
+        1. If frozen, pause attack windup/backswing and TBA without cancelling windup.
+        2. When not winding up, decrement TBA (`tba_timer`) and finish any active backswing.
+        3. On hit frame (`windup_timer == 0`): pre-roll `0x5da618` procs once, apply hits, roll Wave/Surge/Explosion once;
+           on last hit (`atk_idx == hit_count - 1`), set `tba_timer` overlapping `backswing_timer`.
+        4. Initiate next windup once `backswing_timer == 0 and tba_timer == 0` and target is in standing range.
         """
         for team in (TEAM_CAT, TEAM_ENEMY):
             opp_team = 1 - team
@@ -1104,22 +1278,33 @@ class BattleSimulation:
 
             for slot in range(1, MAX_UNITS_PER_TEAM):
                 unit = self.units[team][slot]
-                if unit is None or not unit.is_alive or unit.is_in_knockback() or unit.is_frozen():
+                if unit is None or not unit.is_alive or unit.is_in_knockback():
+                    continue
+                if unit.freeze_timer > 0:
+                    unit.freeze_timer -= 1
                     continue
 
-                # Authentic attack cycle timer: ticks every frame (during the animation AND while walking/idle).
-                if unit.cycle_timer > 0:
-                    unit.cycle_timer -= 1
-                unit.attack_cooldown_timer = unit.cycle_timer
+                # Native 0x5dbc18: TBA starts on last hit frame and decrements while not in windup
+                if not unit.is_winding_up and unit.tba_timer > 0:
+                    unit.tba_timer -= 1
 
                 # Phase A: Backswing completion
                 if unit.backswing_timer > 0:
                     unit.backswing_timer -= 1
-                    unit.anim_frame += 1.0
-                    continue
+                    if unit.backswing_timer > 0:
+                        unit.anim_frame += 1.0
+                        unit.cycle_timer = max(unit.backswing_timer, unit.tba_timer)
+                        unit.attack_cooldown_timer = unit.cycle_timer
+                        continue
+                    # Native 0x5c8ae0: exit attack anim cleanly on final backswing tick
+                    # and fall through to Phase C so tba_timer==0 units re-attack immediately
+                    # without emitting a 1-frame idle(alen) glitch.
+                    unit.anim_state = "idle"
+                    unit.anim_frame = 0.0
+                    unit.cycle_timer = unit.tba_timer
+                    unit.attack_cooldown_timer = unit.tba_timer
 
-                # Phase B: Foreswing (Windup) execution - committed once started!
-                # Supports authentic PONOS 1-to-3 hit attacks (pre1, pre2, pre3).
+                # Phase B: Foreswing (Windup) execution - committed once started (paused by Freeze, cancelled only by KB/Warp/Death)
                 if unit.is_winding_up:
                     unit.windup_timer -= 1
                     unit.anim_frame += 1.0
@@ -1129,7 +1314,7 @@ class BattleSimulation:
                         hit_damage = unit.attack_power if len(unit.attack_hits) == 1 else int(hit_spec.get("damage", unit.attack_power))
                         use_ability = bool(hit_spec.get("use_ability", True))
 
-                        # Collect targets currently inside this hit's attack hitbox
+                        # Collect targets currently inside this hit's attack hitbox (0x5ce084)
                         targets_in_hitbox = []
                         for opp in self.units[opp_team]:
                             if opp is not None and opp.is_alive and self._can_unit_target_opponent(unit, opp):
@@ -1140,6 +1325,9 @@ class BattleSimulation:
                         targets_in_hitbox.sort(key=lambda t: t[0])
 
                         if targets_in_hitbox:
+                            # Native 0x5da618: pre-roll proc booleans ONCE for this hit execution
+                            swing_procs = self._roll_swing_procs(unit) if use_ability else None
+
                             if unit.target_type == "area":
                                 for _, target_entity in targets_in_hitbox:
                                     self._apply_damage(
@@ -1147,31 +1335,42 @@ class BattleSimulation:
                                         target=target_entity,
                                         direction=direction,
                                         hit_damage=hit_damage,
-                                        use_ability=use_ability
+                                        use_ability=use_ability,
+                                        swing_procs=swing_procs,
                                     )
                             else:
-                                primary_target: SimUnit = targets_in_hitbox[0][1]
+                                # Native ARM64 0x5c9158..0x5c92e4: random tie-break among equidistant closest targets
+                                min_dist = targets_in_hitbox[0][0]
+                                tied_targets = [t[1] for t in targets_in_hitbox if abs(t[0] - min_dist) < 1e-6]
+                                primary_target: SimUnit = (
+                                    self.rng.choice(tied_targets) if len(tied_targets) > 1 else tied_targets[0]
+                                )
                                 self._apply_damage(
                                     attacker=unit,
                                     target=primary_target,
                                     direction=direction,
                                     hit_damage=hit_damage,
-                                    use_ability=use_ability
+                                    use_ability=use_ability,
+                                    swing_procs=swing_procs,
                                 )
 
-                            # Wave & Surge attack proc only on ability-enabled hits
+                            # Wave, Surge & Explosion attack proc once per swing on ability-enabled hits
                             if use_ability:
                                 wave_prob = unit.abilities.get("wave_prob", 0)
                                 wave_lvl = unit.abilities.get("wave_lvl", 0)
                                 if wave_prob > 0 and wave_lvl > 0 and self.rng.randint(1, 100) <= wave_prob:
-                                    self._trigger_wave_attack(unit, opp_team, direction, wave_lvl, hit_damage=hit_damage)
+                                    self._trigger_wave_attack(unit, opp_team, direction, wave_lvl, hit_damage=hit_damage, swing_procs=swing_procs)
 
                                 surge_prob = unit.abilities.get("surge_prob", 0)
                                 surge_lvl = unit.abilities.get("surge_lvl", 0)
                                 if surge_prob > 0 and surge_lvl > 0 and self.rng.randint(1, 100) <= surge_prob:
-                                    self._trigger_surge_attack(unit, opp_team, direction, surge_lvl, hit_damage=hit_damage)
+                                    self._trigger_surge_attack(unit, opp_team, direction, surge_lvl, hit_damage=hit_damage, swing_procs=swing_procs)
 
-                        # Advance to next hit in multi-hit combo or transition to backswing
+                                exp_prob = unit.abilities.get("explosion_prob", 0)
+                                if exp_prob > 0 and self.rng.randint(1, 100) <= exp_prob:
+                                    self._trigger_explosion_attack(unit, opp_team, direction, hit_damage=hit_damage, swing_procs=swing_procs)
+
+                        # Advance to next hit in multi-hit combo or transition to backswing + start TBA
                         if unit.current_hit_idx + 1 < len(unit.attack_hits):
                             next_hit = unit.attack_hits[unit.current_hit_idx + 1]
                             cur_pre = int(hit_spec.get("foreswing", unit.attack_windup))
@@ -1183,29 +1382,36 @@ class BattleSimulation:
                             unit.is_winding_up = False
                             unit.current_hit_idx = 0
                             unit.backswing_timer = max(1, unit.attack_anim_len - last_pre)
+                            unit.tba_timer = max(0, int(unit.attack_interval) - 1)
+                            unit.cycle_timer = max(unit.backswing_timer, unit.tba_timer)
+                            unit.attack_cooldown_timer = unit.cycle_timer
+                            # Native Kamikaze (col 55=1, col 58=2): self-destruct after completing attack (e.g. Stone/Glass/Doron)
+                            if unit.abilities.get("kamikaze", False):
+                                unit.hp = 0
+                                unit.is_alive = False
+                                unit.is_dying = True
+                                unit.backswing_timer = 0
+                                self._emit_event({"type": "death", "x": unit.pos_x, "team": unit.team, "name": unit.name})
                     continue
 
-                # Phase C: Idle / Walking & Attack Initiation (only once the attack cycle has elapsed)
+                unit.cycle_timer = unit.tba_timer
+                unit.attack_cooldown_timer = unit.tba_timer
 
-                # Check if any valid opponent is within standing range to initiate attack
+                # Phase C: Idle / Walking & Attack Initiation (once backswing & TBA have elapsed)
                 has_target_in_standing_range = False
                 for opp in self.units[opp_team]:
                     if opp is not None and opp.is_alive and self._can_unit_target_opponent(unit, opp):
-                        dist = (opp.pos_x - unit.pos_x) * direction
-                        if 0 <= dist <= unit.attack_range:
+                        in_stand, _ = self._is_opp_in_standing_range(unit, opp, direction)
+                        if in_stand:
                             has_target_in_standing_range = True
                             break
 
-                if has_target_in_standing_range and unit.cycle_timer <= 0:
+                if has_target_in_standing_range and unit.tba_timer <= 0:
                     unit.is_moving = False
                     unit.is_winding_up = True
                     unit.current_hit_idx = 0
                     first_pre = int(unit.attack_hits[0].get("foreswing", unit.attack_windup)) if unit.attack_hits else unit.attack_windup
-                    last_pre = int(unit.attack_hits[-1].get("foreswing", unit.attack_windup)) if unit.attack_hits else unit.attack_windup
                     unit.windup_timer = max(1, first_pre)
-                    # PONOS attack frequency = Attack Length + max(Backswing, TBA - 1) = max(anim_len, last_pre + TBA - 1)
-                    unit.cycle_timer = max(int(unit.attack_anim_len), last_pre + max(0, int(unit.attack_interval) - 1))
-                    unit.attack_cooldown_timer = unit.cycle_timer
                     unit.anim_state = "attack"
                     unit.anim_frame = 0.0
                     unit.attack_cycle_id += 1
@@ -1213,7 +1419,15 @@ class BattleSimulation:
                         "type": "windup", "x": unit.pos_x, "team": unit.team
                     })
 
-    def _trigger_wave_attack(self, attacker: SimUnit, opp_team: int, direction: int, wave_lvl: int, hit_damage: Optional[int] = None):
+    def _trigger_wave_attack(
+        self,
+        attacker: SimUnit,
+        opp_team: int,
+        direction: int,
+        wave_lvl: int,
+        hit_damage: Optional[int] = None,
+        swing_procs: Optional[Dict[str, bool]] = None,
+    ):
         """Spawns an authentic travelling PONOS wave: `wave_lvl` segments, each WAVE_PROG further,
         appearing every WAVE_SEG_FRAMES frames; each target can only be hit once per wave."""
         is_enemy_spec = attacker.key in ENEMY_REGISTRY and attacker.key not in CAT_REGISTRY
@@ -1238,6 +1452,7 @@ class BattleSimulation:
             "hit": set(),
             "seg_frames": w_seg_frames,
             "is_mini": is_mini_wave,
+            "swing_procs": swing_procs,
         }
         self._emit_event({
             "type": "wave_attack",
@@ -1260,11 +1475,14 @@ class BattleSimulation:
     def _advance_wave(self, wave: Dict[str, Any]):
         center = wave["origin"] + wave["dir"] * (wave["ini"] + WAVE_PROG / 2 + WAVE_PROG * wave["seg"])
         half = wave["width"] / 2.0
+        w_min, w_max = center - half, center + half
         blocked = False
+        procs = wave.get("swing_procs")
         for opp in self.units[wave["opp_team"]]:
             if opp is None or not opp.is_alive or opp.slot == SLOT_CASTLE or id(opp) in wave["hit"] or opp.is_in_knockback() or getattr(opp, 'is_burrowing', False) or getattr(opp, 'is_corpse', False) or getattr(opp, 'is_warped', False):
                 continue
-            if center - half <= opp.pos_x <= center + half:
+            t_min, t_max = self._get_target_interval(opp)
+            if w_min <= t_max and w_max >= t_min:
                 if opp.abilities.get("wave_blocker", False):
                     blocked = True
                     self._emit_event({
@@ -1275,12 +1493,12 @@ class BattleSimulation:
                     # Authentic PONOS: Wave Blocker intercepts and deletes wave, but takes the wave damage unless wave_immune
                     if not opp.abilities.get("wave_immune", False):
                         wave["hit"].add(id(opp))
-                        self._apply_damage(attacker=wave["attacker"], target=opp, direction=wave["dir"], is_wave=True, hit_damage=wave["dmg"])
+                        self._apply_damage(attacker=wave["attacker"], target=opp, direction=wave["dir"], is_wave=True, hit_damage=wave["dmg"], swing_procs=procs)
                     break
                 if opp.abilities.get("wave_immune", False):
                     continue
                 wave["hit"].add(id(opp))
-                self._apply_damage(attacker=wave["attacker"], target=opp, direction=wave["dir"], is_wave=True, hit_damage=wave["dmg"])
+                self._apply_damage(attacker=wave["attacker"], target=opp, direction=wave["dir"], is_wave=True, hit_damage=wave["dmg"], swing_procs=procs)
         if blocked:
             wave["seg"] = wave["lvl"]  # Extinguishes wave immediately upon hitting Wave Blocker
         else:
@@ -1297,8 +1515,17 @@ class BattleSimulation:
                 remaining.append(wave)
         self.active_waves = remaining
 
-    def _trigger_surge_attack(self, attacker: SimUnit, opp_team: int, direction: int, surge_lvl: int, hit_damage: Optional[int] = None):
-        """Spawns an authentic PONOS Surge Attack (烈波): column radius 187.5, lasting 20 * surge_lvl frames."""
+    def _trigger_surge_attack(
+        self,
+        attacker: SimUnit,
+        opp_team: int,
+        direction: int,
+        surge_lvl: int,
+        hit_damage: Optional[int] = None,
+        swing_procs: Optional[Dict[str, bool]] = None,
+    ):
+        """Spawns an authentic PONOS Surge Attack (0x4c32c4): 15f delay, 20f interval x L ticks,
+        10f linger, width 375 DU (half=187.5 DU), -62.5 DU hitbox offset."""
         s_start = int(attacker.abilities.get("surge_start", 150))
         s_range = int(attacker.abilities.get("surge_range", 300))
         rnd_offset = self.rng.randint(0, max(0, s_range))
@@ -1310,58 +1537,99 @@ class BattleSimulation:
         is_mini_surge = attacker.abilities.get("mini_surge", False)
         base_dmg = attacker.attack_power if hit_damage is None else hit_damage
         dmg = max(1, base_dmg // 5) if is_mini_surge else base_dmg
+        self._surge_id_seq += 1
+        lvl = max(1, int(surge_lvl))
+        total_frames = 15 + 20 * lvl + 10
         surge = {
+            "id": self._surge_id_seq,
             "attacker": attacker,
+            "proc_attacker": attacker,
             "opp_team": opp_team,
             "dir": direction,
             "x": surge_x,
-            "lvl": surge_lvl,
-            "timer": 20 * surge_lvl,
+            "lvl": lvl,
+            "s_start": s_start,
+            "s_range": s_range,
+            "elapsed": 0,
+            "timer": total_frames,
             "dmg": dmg,
             "radius": 187.5,
+            "is_mini": is_mini_surge,
+            "swing_procs": swing_procs,
         }
         self.active_surges.append(surge)
         self._emit_event({
             "type": "surge",
             "x": surge_x,
             "team": attacker.team,
-            "level": surge_lvl,
-            "duration": 20 * surge_lvl,
+            "level": lvl,
+            "delay": 15,
+            "duration": 20 * lvl,
+            "total_duration": total_frames,
+            "is_mini": is_mini_surge,
         })
-        self._apply_surge_hit(surge)
 
     def _apply_surge_hit(self, surge: Dict[str, Any]):
         sx = surge["x"]
-        r = surge["radius"]
+        r = surge["radius"]  # 187.5 DU (half of 375 DU)
+        procs = surge.get("swing_procs")
+        dmg_attacker = surge.get("proc_attacker", surge["attacker"])
+        c_enemy_x = self.get_castle(TEAM_ENEMY).pos_x
+        c_cat_x = self.get_castle(TEAM_CAT).pos_x
         for opp in self.units[surge["opp_team"]]:
             if opp is None or not opp.is_alive or opp.slot == SLOT_CASTLE or opp.is_in_knockback() or getattr(opp, 'is_burrowing', False) or getattr(opp, 'is_corpse', False) or getattr(opp, 'is_warped', False):
                 continue
             if opp.abilities.get("surge_immune", False):
                 continue
-            if sx - r <= opp.pos_x <= sx + r:
+            # Native 0x4c32c4 L188-212: target front edge shifted by -62.5 DU along target's facing
+            opp_dir = -1 if opp.team == TEAM_CAT else 1
+            opp_front = opp.pos_x - opp_dir * getattr(opp, "hitbox_front", 0)
+            edge_x = opp_front - opp_dir * 62.5
+            if (sx - r) <= edge_x < (sx + r):
                 self._apply_damage(
-                    attacker=surge["attacker"],
+                    attacker=dmg_attacker,
                     target=opp,
                     direction=surge["dir"],
                     is_surge=True,
                     hit_damage=surge["dmg"],
-                    use_ability=True
+                    use_ability=True,
+                    swing_procs=procs,
                 )
-                if opp.is_alive and opp.abilities.get("surge_counter", False) and not opp.is_cursed() and not surge.get("is_counter", False):
-                    c_lvl = max(1, opp.abilities.get("surge_lvl", surge["lvl"]))
+                # Native 0x5db2c0 L375-447: Counter-Surge reflects original surge attributes ONCE per surge ID
+                if (
+                    opp.is_alive
+                    and opp.abilities.get("surge_counter", False)
+                    and not opp.is_cursed()
+                    and not surge.get("is_counter", False)
+                    and surge["id"] not in opp.countered_surge_ids
+                ):
+                    opp.countered_surge_ids.add(surge["id"])
+                    c_lvl = surge["lvl"]
                     opp_opp_team = 1 - opp.team
-                    opp_dir = -surge["dir"]
+                    opp_dir_out = -surge["dir"]
+                    orig_start = int(surge.get("s_start", 150))
+                    orig_range = int(surge.get("s_range", 300))
+                    rnd_off = self.rng.randint(0, max(0, orig_range))
+                    counter_x = max(c_enemy_x, min(c_cat_x, opp.pos_x + opp_dir_out * (orig_start + rnd_off)))
+                    self._surge_id_seq += 1
+                    total_frames = 15 + 20 * c_lvl + 10
                     self._emit_event({"type": "surge_counter", "x": opp.pos_x, "team": opp.team})
                     counter_surge = {
+                        "id": self._surge_id_seq,
                         "attacker": opp,
+                        "proc_attacker": dmg_attacker,
                         "opp_team": opp_opp_team,
-                        "dir": opp_dir,
-                        "x": opp.pos_x + opp_dir * 100,
+                        "dir": opp_dir_out,
+                        "x": counter_x,
                         "lvl": c_lvl,
-                        "timer": 20 * c_lvl,
-                        "dmg": opp.attack_power,
+                        "s_start": orig_start,
+                        "s_range": orig_range,
+                        "elapsed": 0,
+                        "timer": total_frames,
+                        "dmg": surge["dmg"],
                         "radius": 187.5,
                         "is_counter": True,
+                        "swing_procs": procs,
                     }
                     self.active_surges.append(counter_surge)
                     self._emit_event({
@@ -1369,18 +1637,109 @@ class BattleSimulation:
                         "x": counter_surge["x"],
                         "team": opp.team,
                         "level": c_lvl,
+                        "delay": 15,
                         "duration": 20 * c_lvl,
+                        "total_duration": total_frames,
+                        "is_mini": bool(surge.get("is_mini", False)),
+                        "is_counter": True,
                     })
 
     def _update_surges(self):
         remaining = []
         for s in self.active_surges:
+            s["elapsed"] += 1
             s["timer"] -= 1
-            if s["timer"] > 0:
-                if s["timer"] % 20 == 0:
+            e = s["elapsed"]
+            if e >= 15 and (e - 15) % 20 == 0:
+                tick_idx = (e - 15) // 20
+                if tick_idx < s["lvl"]:
                     self._apply_surge_hit(s)
+            if s["timer"] > 0:
                 remaining.append(s)
         self.active_surges = remaining
+
+    def _trigger_explosion_attack(
+        self,
+        attacker: SimUnit,
+        opp_team: int,
+        direction: int,
+        hit_damage: Optional[int] = None,
+        swing_procs: Optional[Dict[str, bool]] = None,
+    ):
+        """Spawns an authentic PONOS Explosion (0x4c3f24): 3 expanding rings spaced by 15f,
+        widths (200, 125, 100) DU and damage (100%, 60%, 20%), hitting each target once across all 3 rings."""
+        e_start = int(attacker.abilities.get("explosion_start", 0))
+        e_width = int(attacker.abilities.get("explosion_width", 0))
+        rnd = (self.rng.randint(0, e_width) - (e_width // 2)) if e_width > 0 else 0
+        c_enemy_x = self.get_castle(TEAM_ENEMY).pos_x
+        c_cat_x = self.get_castle(TEAM_CAT).pos_x
+        origin_x = max(c_enemy_x, min(c_cat_x, float(attacker.pos_x + direction * e_start + rnd)))
+        base_dmg = attacker.attack_power if hit_damage is None else hit_damage
+        exp = {
+            "attacker": attacker,
+            "opp_team": opp_team,
+            "dir": direction,
+            "x": origin_x,
+            "tick": 0,
+            "dmg": base_dmg,
+            "hit": set(),
+            "swing_procs": swing_procs,
+        }
+        self.active_explosions.append(exp)
+        self._emit_event({
+            "type": "explosion",
+            "x": origin_x,
+            "team": attacker.team,
+            "delay": 15,
+            "duration": 65,
+        })
+
+    def _update_explosions(self):
+        """Native ARM64 0x4c3f24: rings 0..2 activate every 15f (n_frame4=15), active [15, 35) age window."""
+        widths_du = (200.0, 125.0, 100.0)
+        dmg_pcts = (100, 60, 20)
+        ring_offsets = (0.0, 162.5, 275.0)  # (w1+w2)/2=162.5 DU, (w1+2*w2+w3)/2=275.0 DU
+        remaining = []
+        for exp in self.active_explosions:
+            tick = exp["tick"]
+            ox = exp["x"]
+            max_ring = min(3, 1 + tick // 15)
+            procs = exp.get("swing_procs")
+            for r in range(max_ring):
+                age = tick - 15 * r
+                if 15 <= age < 35:
+                    half = widths_du[r] / 2.0
+                    centers = (ox,) if r == 0 else (ox - ring_offsets[r], ox + ring_offsets[r])
+                    ring_dmg = max(1, (exp["dmg"] * dmg_pcts[r]) // 100)
+                    for opp in self.units[exp["opp_team"]]:
+                        if (
+                            opp is None
+                            or not opp.is_alive
+                            or opp.slot == SLOT_CASTLE
+                            or id(opp) in exp["hit"]
+                            or opp.is_in_knockback()
+                            or getattr(opp, "is_burrowing", False)
+                            or getattr(opp, "is_corpse", False)
+                            or getattr(opp, "is_warped", False)
+                            or opp.abilities.get("explosion_immune", False)
+                        ):
+                            continue
+                        opp_dir = -1 if opp.team == TEAM_CAT else 1
+                        opp_front = opp.pos_x - opp_dir * getattr(opp, "hitbox_front", 0)
+                        if any((cx - half) <= opp_front < (cx + half) for cx in centers):
+                            exp["hit"].add(id(opp))
+                            self._apply_damage(
+                                attacker=exp["attacker"],
+                                target=opp,
+                                direction=exp["dir"],
+                                hit_damage=ring_dmg,
+                                use_ability=True,
+                                swing_procs=procs,
+                            )
+            exp["tick"] += 1
+            if exp["tick"] < 80:
+                remaining.append(exp)
+        self.active_explosions = remaining
 
     def _apply_damage(
         self,
@@ -1390,15 +1749,24 @@ class BattleSimulation:
         is_wave: bool = False,
         is_surge: bool = False,
         hit_damage: Optional[int] = None,
-        use_ability: bool = True
+        use_ability: bool = True,
+        swing_procs: Optional[Dict[str, bool]] = None,
     ):
         """
         Applies damage using NativeDamageEngine magic division (`0x10624dd3`),
-        authentic trait multipliers, Critical hits, Savage Blow, Metal 1-damage rule, and status procs.
+        authentic trait multipliers, once-per-swing proc rolls (`0x5da618`), Metal 1-damage rule, and status procs.
         Supports Curse, Toxic, Aku Shield, Colossus/Behemoth slayer, and Zombie mechanics.
         """
         if target.slot != SLOT_CASTLE and target.is_in_knockback():
             return
+
+        def _proc_flag(proc_key: str, prob_key: str, default_prob: int = 0) -> bool:
+            if not use_ability:
+                return False
+            if swing_procs is not None:
+                return bool(swing_procs.get(proc_key, False))
+            prob = attacker.abilities.get(prob_key, default_prob)
+            return bool(prob > 0 and self.rng.randint(1, 100) <= prob)
 
         raw_damage = attacker.attack_power if hit_damage is None else hit_damage
 
@@ -1462,27 +1830,34 @@ class BattleSimulation:
 
         if target.slot != SLOT_CASTLE and not target_cursed:
             if "colossus" in attacker.traits and target.abilities.get("colossus_slayer", False):
-                raw_damage = max(1, int(raw_damage * 0.7))
+                raw_damage = max(1, NativeDamageEngine.calculate_damage(raw_damage, 700))
             if "behemoth" in attacker.traits and target.abilities.get("behemoth_slayer", False):
-                raw_damage = max(1, int(raw_damage * 0.6))
+                raw_damage = max(1, NativeDamageEngine.calculate_damage(raw_damage, 600))
+            if "sage" in attacker.traits and target.abilities.get("sage_slayer", False):
+                raw_damage = max(1, NativeDamageEngine.calculate_damage(raw_damage, 500))
+        if target.slot != SLOT_CASTLE and not attacker_cursed:
+            if "sage" in target.traits and attacker.abilities.get("sage_slayer", False):
+                raw_damage = NativeDamageEngine.calculate_damage(raw_damage, 1200)
 
         # 4. Critical Hit (2x damage, bypasses Metal) & Savage Blow (Col 82/83, does NOT bypass Metal)
-        crit_prob = attacker.abilities.get("crit_prob", 0) if use_ability else 0
-        is_crit = (crit_prob > 0 and self.rng.randint(1, 100) <= crit_prob)
+        is_crit = _proc_flag("crit", "crit_prob")
         if is_crit:
             raw_damage = NativeDamageEngine.calculate_damage(raw_damage, 2000)
 
-        savage_prob = attacker.abilities.get("savage_blow_prob", 0) if use_ability else 0
         savage_boost = attacker.abilities.get("savage_blow_boost", 200)
-        is_savage = savage_prob > 0 and self.rng.randint(1, 100) <= savage_prob
+        is_savage = _proc_flag("savage", "savage_blow_prob")
         if is_savage:
             raw_damage = NativeDamageEngine.calculate_damage(raw_damage, 1000 + savage_boost * 10)
 
         damage = NativeDamageEngine.calculate_damage(raw_damage, 1000)
 
-        # 5. Metal trait rule: takes 1 damage unless Critical Hit
+        # 5. Metal trait rule: takes 1 damage unless Critical Hit or Metal Killer (col 112: X% of current HP)
         if (target.slot != SLOT_CASTLE) and ("metal" in target.traits or target.abilities.get("is_metal", False)) and not is_crit:
-            damage = 1
+            mk_pct = int(attacker.abilities.get("metal_killer_pct", 0)) if (use_ability and not attacker_cursed) else 0
+            if mk_pct > 0 and target.hp > 0:
+                damage = max(1, (target.hp * mk_pct + 99) // 100)
+            else:
+                damage = 1
 
         # 5b. Trait-Targeted Dodge (Col 84/85 & Behemoth Slayer 5% passive dodge)
         dodged = False
@@ -1502,8 +1877,7 @@ class BattleSimulation:
         # 6. Aku Shield & Alien Barrier check
         shield_or_barrier_blocked = False
         if getattr(target, "aku_shield", 0) > 0:
-            sp_prob = attacker.abilities.get("shield_pierce_prob", 0) if use_ability else 0
-            if sp_prob > 0 and self.rng.randint(1, 100) <= sp_prob:
+            if _proc_flag("shield_pierce", "shield_pierce_prob"):
                 target.aku_shield = 0
                 self._emit_event({"type": "shield_pierce", "x": target.pos_x, "team": target.team})
             else:
@@ -1518,8 +1892,13 @@ class BattleSimulation:
                     self._emit_event({"type": "shield_hit", "x": target.pos_x, "team": target.team})
 
         if target.barrier > 0:
-            bb_prob = attacker.abilities.get("barrier_break_prob", attacker.abilities.get("barrier_breaker_prob", 0)) if use_ability else 0
-            if damage > target.barrier or (bb_prob > 0 and self.rng.randint(1, 100) <= bb_prob):
+            bb_prob = attacker.abilities.get("barrier_break_prob", attacker.abilities.get("barrier_breaker_prob", 0))
+            bb_hit = (
+                bool(swing_procs.get("barrier_break", False))
+                if (use_ability and swing_procs is not None)
+                else (use_ability and bb_prob > 0 and self.rng.randint(1, 100) <= bb_prob)
+            )
+            if damage > target.barrier or bb_hit:
                 target.barrier = 0
                 self._emit_event({"type": "barrier_break", "x": target.pos_x, "team": target.team})
             else:
@@ -1529,10 +1908,9 @@ class BattleSimulation:
         target.hp -= damage
 
         # 7. Toxic % max HP true damage (blocked by active Aku shield or Alien barrier)
-        toxic_prob = attacker.abilities.get("toxic_prob", 0) if use_ability else 0
         toxic_hp_pct = attacker.abilities.get("toxic_hp_pct", 0)
-        if target.hp > 0 and not shield_or_barrier_blocked and target.slot != SLOT_CASTLE and toxic_prob > 0 and toxic_hp_pct > 0 and not target.abilities.get("toxic_immune", False):
-            if self.rng.randint(1, 100) <= toxic_prob:
+        if target.hp > 0 and not shield_or_barrier_blocked and target.slot != SLOT_CASTLE and toxic_hp_pct > 0 and not target.abilities.get("toxic_immune", False):
+            if _proc_flag("toxic", "toxic_prob"):
                 toxic_damage = max(1, (target.max_hp * toxic_hp_pct) // 100)
                 target.hp -= toxic_damage
                 self._emit_event({"type": "toxic", "x": target.pos_x, "team": target.team, "damage": toxic_damage})
@@ -1571,44 +1949,34 @@ class BattleSimulation:
         if target.slot == SLOT_CASTLE:
             return
 
-        # 9. Status Effect Procs (Knockback, Freeze, Slow, Weaken, Curse) when target is alive and hit has use_ability=True
-        # Authentic PONOS: status effects cannot be applied while an Aku Shield or Alien Barrier absorbs/blocks the hit
+        # 9. Status Effect Procs (native 0x5d6da0: direct timer overwrite, Freeze pauses windup instead of cancelling)
         can_proc = use_ability and not shield_or_barrier_blocked and not attacker_cursed and ((not attacker.target_traits) or trait_match)
         if target.hp > 0 and can_proc:
-            kb_prob = attacker.abilities.get("kb_prob", 0)
-            if kb_prob > 0 and not target.abilities.get("kb_immune", False) and self.rng.randint(1, 100) <= kb_prob:
-                self._knockback(target, "kb")
+            if not target.abilities.get("kb_immune", False) and _proc_flag("kb", "kb_prob"):
+                tr_kb_permille = 300 if has_fruit_atk else 0
+                self._knockback(target, "kb", tr_kb_permille=tr_kb_permille)
                 self._emit_event({"type": "knockback", "x": target.pos_x, "radius": target.radius, "team": target.team, "kind": "kb"})
 
-            freeze_prob = attacker.abilities.get("freeze_prob", 0)
             freeze_dur = attacker.abilities.get("freeze_dur", 0)
-            if freeze_prob > 0 and freeze_dur > 0 and not target.abilities.get("freeze_immune", False) and self.rng.randint(1, 100) <= freeze_prob:
-                target.freeze_timer = max(target.freeze_timer, freeze_dur)
-                target.is_winding_up = False
-                target.current_hit_idx = 0
-                target.windup_timer = 0
-                target.backswing_timer = 0
+            if freeze_dur > 0 and not target.abilities.get("freeze_immune", False) and _proc_flag("freeze", "freeze_prob"):
+                target.freeze_timer = int(freeze_dur)
 
-            slow_prob = attacker.abilities.get("slow_prob", 0)
             slow_dur = attacker.abilities.get("slow_dur", 0)
-            if slow_prob > 0 and slow_dur > 0 and not target.abilities.get("slow_immune", False) and self.rng.randint(1, 100) <= slow_prob:
-                target.slow_timer = max(target.slow_timer, slow_dur)
+            if slow_dur > 0 and not target.abilities.get("slow_immune", False) and _proc_flag("slow", "slow_prob"):
+                target.slow_timer = int(slow_dur)
 
-            weaken_prob = attacker.abilities.get("weaken_prob", 0)
             weaken_dur = attacker.abilities.get("weaken_dur", 0)
             weaken_pct = attacker.abilities.get("weaken_pct", 50)
-            if weaken_prob > 0 and weaken_dur > 0 and not target.abilities.get("weaken_immune", False) and self.rng.randint(1, 100) <= weaken_prob:
-                target.weaken_timer = max(target.weaken_timer, weaken_dur)
+            if weaken_dur > 0 and not target.abilities.get("weaken_immune", False) and _proc_flag("weaken", "weaken_prob"):
+                target.weaken_timer = int(weaken_dur)
                 target.weaken_pct = weaken_pct
 
-            curse_prob = attacker.abilities.get("curse_prob", 0)
             curse_dur = attacker.abilities.get("curse_dur", 0)
-            if curse_prob > 0 and curse_dur > 0 and not target.abilities.get("curse_immune", False) and self.rng.randint(1, 100) <= curse_prob:
-                target.curse_timer = max(target.curse_timer, curse_dur)
+            if curse_dur > 0 and not target.abilities.get("curse_immune", False) and _proc_flag("curse", "curse_prob"):
+                target.curse_timer = int(curse_dur)
                 self._emit_event({"type": "curse", "x": target.pos_x, "team": target.team})
 
-            warp_prob = attacker.abilities.get("warp_prob", 0)
-            if warp_prob > 0 and self.rng.randint(1, 100) <= warp_prob:
+            if _proc_flag("warp", "warp_prob"):
                 if target.abilities.get("warp_blocker", False) or target.abilities.get("warp_immune", False):
                     self._emit_event({"type": "warp_block", "x": target.pos_x, "team": target.team})
                 else:
@@ -1629,8 +1997,25 @@ class BattleSimulation:
                     target.backswing_timer = 0
                     self._emit_event({"type": "warp_enter", "x": target.pos_x, "team": target.team, "dest_x": dest_x})
 
-        # 10. HP Threshold Knockback & Death Knockback (0x00959cf4)
+        # 10. HP Threshold Knockback & Death Knockback (0x00959cf4) + Death Surge (t_unit col 89..92)
         if target.hp <= 0 and target.slot != SLOT_CASTLE:
+            if getattr(target, "is_corpse", False):
+                # Soulstrike killed a Zombie corpse before revival -> permanently remove
+                target.hp = 0
+                target.is_alive = False
+                target.is_corpse = False
+                target.revive_left = 0
+                target.killed_by_zombie_killer = True
+                self.units[target.team][target.slot] = None
+                self._emit_event({"type": "death", "x": target.pos_x, "team": target.team, "name": target.name})
+                return
+            ds_prob = int(target.abilities.get("death_surge_prob", 0))
+            ds_lvl = int(target.abilities.get("death_surge_lvl", 0))
+            if ds_prob > 0 and ds_lvl > 0 and self.rng.randint(1, 100) <= ds_prob:
+                t_dir = -1 if target.team == TEAM_CAT else 1
+                self._trigger_surge_attack(
+                    target, 1 - target.team, t_dir, ds_lvl, hit_damage=target.attack_power, swing_procs=None
+                )
             target.hp = 0
             target.is_alive = False
             target.is_dying = True

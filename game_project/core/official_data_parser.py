@@ -10,10 +10,32 @@ Zero synthetic values, zero hardcoded guessing. All data loaded from official de
 
 import os
 import csv
+import json
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple, Any
+from .constants import UNIT_RENDER_SCALE
+from .talents import TalentCatalog
 
 DEFAULT_OFFICIAL_DATA_DIR = r"E:\rea\game_project\data\official_extracted_data"
+DEFAULT_UNIT_LEVEL_BRACKETS = [20, 20, 20, 20, 20, 20, 10, 10, 10, 10]
+
+
+def compute_ponos_level_stat(
+    base_val: int,
+    level: int,
+    brackets: Optional[List[int]] = None,
+) -> int:
+    """Native ARM64 0x9632d8 / 0x9645a8 piecewise level scaling from unitlevel.csv."""
+    lv = max(1, int(level))
+    base = int(base_val)
+    if lv == 1:
+        return max(1, base)
+    b = brackets if brackets else DEFAULT_UNIT_LEVEL_BRACKETS
+    total_x100 = base * 100
+    for i in range(1, lv):
+        rate = b[min(len(b) - 1, i // 10)]
+        total_x100 += base * rate
+    return max(1, (total_x100 + 50) // 100)
 
 # Permutation mapping of 48 stages in Empire of Cats Ch. 1 to StageName_tw.csv indices
 STAGE_PERMUTATION = [40, 41, 42, 43, 44, 45] + list(range(39, -1, -1)) + [46, 47]
@@ -45,8 +67,17 @@ class CatData:
     rarity: str = "normal"      # normal=基本, ex=EX, rare=稀有, super_rare=激稀有, uber_rare=超激稀有, legend_rare=傳說稀有
     rarity_label: str = "基本"
     unit_key: str = ""
-    render_scale: float = 0.62
+    render_scale: float = UNIT_RENDER_SCALE
     attack_hits: List[Dict[str, Any]] = field(default_factory=list)
+    hitbox_front: int = 0
+    hitbox_back: int = 320
+    level_brackets: List[int] = field(default_factory=lambda: list(DEFAULT_UNIT_LEVEL_BRACKETS))
+    max_base_level: int = 50
+    max_plus_level: int = 0
+    max_level: int = 50
+    form: str = "f"
+    form_label: str = "一階"
+    talents: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -78,6 +109,15 @@ class CatData:
             "rarity": self.rarity,
             "rarity_label": self.rarity_label,
             "render_scale": self.render_scale,
+            "hitbox_front": self.hitbox_front,
+            "hitbox_back": self.hitbox_back,
+            "level_brackets": list(self.level_brackets),
+            "max_base_level": self.max_base_level,
+            "max_plus_level": self.max_plus_level,
+            "max_level": self.max_level,
+            "form": self.form,
+            "form_label": self.form_label,
+            "talents": [dict(t) for t in self.talents],
         }
 
 @dataclass
@@ -102,6 +142,10 @@ class EnemyData:
     abilities: Dict[str, Any] = field(default_factory=dict)
     attack_anim_len: int = 17
     attack_hits: List[Dict[str, Any]] = field(default_factory=list)
+    hitbox_front: int = 0
+    hitbox_back: int = 320
+    render_scale: float = UNIT_RENDER_SCALE
+    level_brackets: List[int] = field(default_factory=lambda: list(DEFAULT_UNIT_LEVEL_BRACKETS))
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -125,7 +169,10 @@ class EnemyData:
             "texture_code": self.texture_code,
             "traits": list(self.traits),
             "target_traits": ["red", "floating", "black", "metal", "traitless", "angel", "alien", "zombie"],
-            "abilities": dict(self.abilities)
+            "abilities": dict(self.abilities),
+            "hitbox_front": self.hitbox_front,
+            "hitbox_back": self.hitbox_back,
+            "render_scale": self.render_scale,
         }
 
 @dataclass
@@ -185,14 +232,68 @@ class OfficialDataParser:
         self.data_dir = data_dir
         self.cats: Dict[int, CatData] = {}
         self.expanded_cats: Dict[str, CatData] = {}
+        self.final_form_cats: Dict[str, CatData] = {}
         self.enemies: Dict[int, EnemyData] = {}
         self.stages: Dict[int, StageData] = {}
         self.stage_names: List[str] = []
+        self.unit_levels: List[List[int]] = []
+        self.unitbuy_rows: List[List[int]] = []
+        self._load_unitlevels()
+        self._load_unitbuy()
         self._load_stage_names()
         self._load_cats()
         self._load_expanded_cats()
+        self._load_final_form_cats()
         self._load_enemies()
         self._load_stages()
+
+    def _load_unitbuy(self):
+        ub_file = os.path.join(self.data_dir, "unitbuy.csv")
+        if os.path.isfile(ub_file):
+            with open(ub_file, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    s = line.strip()
+                    if not s:
+                        continue
+                    row = [int(p.strip()) for p in s.split(",") if p.strip().lstrip("-").isdigit()]
+                    if row:
+                        self.unitbuy_rows.append(row)
+
+    def get_unit_buy_meta(self, unit_id: int) -> Tuple[str, str, int, int]:
+        """Returns (rarity_key, rarity_label, max_base_lv, max_plus_lv) from official unitbuy.csv."""
+        rarity_map = {
+            0: ("normal", "基本"),
+            1: ("ex", "EX"),
+            2: ("rare", "稀有"),
+            3: ("super_rare", "激稀有"),
+            4: ("uber_rare", "超激稀有"),
+            5: ("legend_rare", "傳說稀有"),
+        }
+        if 0 <= unit_id < len(self.unitbuy_rows):
+            r = self.unitbuy_rows[unit_id]
+            r_num = r[13] if len(r) > 13 else 0
+            r_key, r_lbl = rarity_map.get(r_num, ("ex", "EX"))
+            max_base = max(1, r[50]) if len(r) > 50 and r[50] > 0 else 50
+            max_plus = max(0, r[51]) if len(r) > 51 and r[51] >= 0 else 0
+            return r_key, r_lbl, max_base, max_plus
+        return "normal", "基本", 50, 0
+
+    def _load_unitlevels(self):
+        ul_file = os.path.join(self.data_dir, "unitlevel.csv")
+        if os.path.isfile(ul_file):
+            with open(ul_file, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    s = line.strip()
+                    if not s:
+                        continue
+                    row = [int(p.strip()) for p in s.split(",") if p.strip().lstrip("-").isdigit()]
+                    if row:
+                        self.unit_levels.append(row)
+
+    def get_unit_level_brackets(self, unit_id: Any) -> List[int]:
+        if isinstance(unit_id, int) and 0 <= unit_id < len(self.unit_levels):
+            return list(self.unit_levels[unit_id][:10])
+        return list(DEFAULT_UNIT_LEVEL_BRACKETS)
 
     @classmethod
     def get_instance(cls, data_dir: str = DEFAULT_OFFICIAL_DATA_DIR) -> 'OfficialDataParser':
@@ -245,16 +346,20 @@ class OfficialDataParser:
                             break
                         num_kf = int(lines[idx].split(",")[0].strip())
                         idx += 1
+                        track_frames: List[int] = []
                         for _ in range(num_kf):
                             if idx >= len(lines):
                                 break
                             kf_p = [int(p.strip()) for p in lines[idx].split(",")[:4] if p.strip().lstrip("-").isdigit()]
                             if len(kf_p) >= 4:
-                                loop_mult = loop if 0 < loop <= 4 else 1
-                                end_f = kf_p[0] * loop_mult
-                                if end_f > max_f:
-                                    max_f = end_f
+                                track_frames.append(kf_p[0])
                             idx += 1
+                        if track_frames:
+                            s_f = track_frames[0]
+                            e_f = track_frames[-1]
+                            end_f = (s_f + (e_f - s_f) * loop) if loop > 0 else e_f
+                            if end_f > max_f:
+                                max_f = end_f
                 return max(foreswing + 2, max_f)
             except Exception:
                 pass
@@ -326,6 +431,7 @@ class OfficialDataParser:
             f_windup = attack_hits[0]["foreswing"]
             # Authentic PONOS cooldown formula: row[7] * 2 (with hard minimum 60 frames = 2.0s)
             cd_frames = max(60, row[7] * 2)
+            _, _, max_base_lv, max_plus_lv = self.get_unit_buy_meta(cat_idx)
             cat_obj = CatData(
                 id=cat_idx,
                 name=name,
@@ -352,8 +458,16 @@ class OfficialDataParser:
                 rarity="normal",
                 rarity_label="基本",
                 unit_key=base_keys[cat_idx] if cat_idx < len(base_keys) else f"cat_{cat_idx}",
-                render_scale=0.62,
+                render_scale=UNIT_RENDER_SCALE,
                 attack_hits=attack_hits,
+                hitbox_front=row[8] if len(row) > 8 else 0,
+                hitbox_back=row[9] if len(row) > 9 else 320,
+                level_brackets=self.get_unit_level_brackets(cat_idx),
+                max_base_level=max_base_lv,
+                max_plus_level=max_plus_lv,
+                max_level=max_base_lv + max_plus_lv,
+                form="f",
+                form_label="一階",
             )
             self.cats[cat_idx] = cat_obj
             self.expanded_cats[cat_obj.unit_key] = cat_obj
@@ -362,7 +476,7 @@ class OfficialDataParser:
         """
         Loads 29+ additional official cats across all rarities (EX, 稀有, 激稀有, 超激稀有, 傳說稀有)
         from official unitXXX.csv and Unit_Explanation*_tw.csv files.
-        All units use uniform 0.62 world scale so native .mamodel bone scales govern 100% of proportions.
+        All units use uniform UNIT_RENDER_SCALE (720/640 = 1.125) so native .mamodel bone scales govern 100% of proportions.
         """
         expanded_defs = [
             # 1: EX (Special) - 6 隻
@@ -435,6 +549,8 @@ class OfficialDataParser:
             f_windup = attack_hits[0]["foreswing"]
             # Authentic PONOS cooldown formula: row[7] * 2 (with hard minimum 60 frames = 2.0s)
             cd_frames = max(60, row[7] * 2)
+            _, _, max_base_lv, max_plus_lv = self.get_unit_buy_meta(uid)
+            form_label_map = {"f": "一階", "c": "二階", "s": "三階", "u": "四階"}
             self.expanded_cats[u_key] = CatData(
                 id=uid,
                 name=name,
@@ -461,9 +577,169 @@ class OfficialDataParser:
                 rarity=r_id,
                 rarity_label=r_label,
                 unit_key=u_key,
-                render_scale=0.62,
+                render_scale=UNIT_RENDER_SCALE,
                 attack_hits=attack_hits,
+                hitbox_front=row[8] if len(row) > 8 else 0,
+                hitbox_back=row[9] if len(row) > 9 else 320,
+                level_brackets=self.get_unit_level_brackets(uid),
+                max_base_level=max_base_lv,
+                max_plus_level=max_plus_lv,
+                max_level=max_base_lv + max_plus_lv,
+                form=form,
+                form_label=form_label_map.get(form, "一階"),
             )
+
+    def _load_final_form_cats(self):
+        """
+        Dynamically discovers EVERY official cat with a complete unpacked skeletal rig
+        (.mamodel + .imgcut + .png + 00/01/02.maanim) in official_extracted, selecting each
+        cat's highest available evolution form (u > s > c > f) with authentic unitbuy.csv
+        rarity & max level (base + plus).
+        """
+        asset_dir = r"E:\rea\game_project\assets\official_extracted"
+        if not os.path.isdir(asset_dir):
+            return
+        avail = {fn.lower() for fn in os.listdir(asset_dir)}
+        cache_path = os.path.join(self.data_dir, "..", "final_cats_anim_cache.json")
+        anim_len_cache: Dict[str, int] = {}
+        if os.path.isfile(cache_path):
+            try:
+                with open(cache_path, "r", encoding="utf-8") as cf:
+                    loaded = json.load(cf)
+                if isinstance(loaded, dict):
+                    anim_len_cache = {str(k): int(v) for k, v in loaded.items()}
+            except Exception:
+                anim_len_cache = {}
+        cache_dirty = False
+        forms = ["f", "c", "s", "u"]
+        form_labels = {"f": "一階", "c": "二階", "s": "三階", "u": "四階"}
+        rarity_order = {"normal": 0, "ex": 1, "rare": 2, "super_rare": 3, "uber_rare": 4, "legend_rare": 5}
+
+        discovered: List[Tuple[int, int, CatData]] = []
+        total_units = len(self.unitbuy_rows) if self.unitbuy_rows else 900
+
+        for uid in range(total_units):
+            csv_path = os.path.join(self.data_dir, f"unit{uid + 1:03d}.csv")
+            if not os.path.isfile(csv_path):
+                continue
+            with open(csv_path, "r", encoding="utf-8", errors="ignore") as f:
+                csv_lines = [l.split("//")[0].strip() for l in f if l.split("//")[0].strip()]
+            if not csv_lines:
+                continue
+
+            # Parse official TW names/descriptions; skip unlocalized placeholder rows
+            exp_path = os.path.join(self.data_dir, f"Unit_Explanation{uid + 1}_tw.csv")
+            exp_entries: List[Tuple[str, str]] = []
+            if os.path.isfile(exp_path):
+                with open(exp_path, "r", encoding="utf-8", errors="ignore") as f:
+                    for eline in f:
+                        s = eline.strip()
+                        if not s:
+                            continue
+                        parts = [p.strip() for p in s.replace("|", ",").split(",")]
+                        ename = parts[0] if parts else ""
+                        edesc = " ".join([p for p in parts[1:4] if p])
+                        exp_entries.append((ename, edesc))
+            if not any(n for n, _ in exp_entries):
+                continue
+
+            # Select highest available evolution form (u > s > c > f) with complete rig
+            best_fi = None
+            best_form = None
+            for fi in range(min(len(csv_lines), 4)):
+                fm = forms[fi]
+                code = f"{uid:03d}_{fm}"
+                req = (
+                    f"{code}.mamodel", f"{code}.imgcut", f"{code}.png",
+                    f"{code}00.maanim", f"{code}01.maanim", f"{code}02.maanim",
+                )
+                if all(r.lower() in avail for r in req):
+                    best_fi = fi
+                    best_form = fm
+
+            if best_fi is None or best_form is None:
+                continue
+
+            target_line = csv_lines[best_fi]
+            row = [int(x.strip()) for x in target_line.split(",") if x.strip().lstrip("-").isdigit()]
+            if len(row) < 8:
+                continue
+
+            # Name & description for chosen form (fallback to previous non-empty form name if blank)
+            name = ""
+            desc = ""
+            if best_fi < len(exp_entries) and exp_entries[best_fi][0]:
+                name, desc = exp_entries[best_fi]
+            else:
+                for idx in range(min(best_fi, len(exp_entries) - 1), -1, -1):
+                    if exp_entries[idx][0]:
+                        name, desc = exp_entries[idx]
+                        break
+            if not name:
+                continue
+
+            r_key, r_label, max_base_lv, max_plus_lv = self.get_unit_buy_meta(uid)
+            target_traits, abilities, attack_hits, total_atk, max_foreswing = self._parse_cat_csv_row(row)
+            tex_code = f"{uid:03d}_{best_form}"
+            u_key = f"cat_{uid:03d}_{best_form}"
+            f_windup = attack_hits[0]["foreswing"]
+            cd_frames = max(60, row[7] * 2)
+            if tex_code in anim_len_cache:
+                atk_len = max(max_foreswing + 2, anim_len_cache[tex_code])
+            else:
+                atk_len = self._get_maanim_attack_len(tex_code, max_foreswing)
+                anim_len_cache[tex_code] = atk_len
+                cache_dirty = True
+
+            cat_obj = CatData(
+                id=uid,
+                name=name,
+                description=desc,
+                hp=row[0],
+                knockback_count=max(1, row[1]),
+                speed=max(1, row[2]),
+                attack_power=total_atk,
+                attack_interval=max(0, row[4] * 2),
+                attack_range=row[5],
+                cost=row[6],
+                cooldown_frames=cd_frames,
+                target_type="area" if len(row) > 12 and row[12] == 1 else "single",
+                attack_windup=f_windup,
+                color=(240, 235, 220),
+                radius=24,
+                texture_code=tex_code,
+                icon_code=f"uni{uid:03d}_{best_form}00",
+                unlock_stage=0,
+                upgrade_costs=[],
+                target_traits=target_traits,
+                abilities=abilities,
+                attack_anim_len=atk_len,
+                rarity=r_key,
+                rarity_label=r_label,
+                unit_key=u_key,
+                render_scale=UNIT_RENDER_SCALE,
+                attack_hits=attack_hits,
+                hitbox_front=row[8] if len(row) > 8 else 0,
+                hitbox_back=row[9] if len(row) > 9 else 320,
+                level_brackets=self.get_unit_level_brackets(uid),
+                max_base_level=max_base_lv,
+                max_plus_level=max_plus_lv,
+                max_level=max_base_lv + max_plus_lv,
+                form=best_form,
+                form_label=form_labels.get(best_form, "一階"),
+                talents=TalentCatalog.get_instance().get_talents(uid),
+            )
+            discovered.append((rarity_order.get(r_key, 9), uid, cat_obj))
+
+        discovered.sort(key=lambda t: (t[0], t[1]))
+        for _, _, cat_obj in discovered:
+            self.final_form_cats[cat_obj.unit_key] = cat_obj
+        if cache_dirty:
+            try:
+                with open(cache_path, "w", encoding="utf-8") as cf:
+                    json.dump(anim_len_cache, cf)
+            except Exception:
+                pass
 
     def _parse_cat_csv_row(self, row: List[int]) -> Tuple[List[str], Dict[str, Any], List[Dict[str, Any]], int, int]:
         """
@@ -517,8 +793,9 @@ class OfficialDataParser:
             "slow_immune": g(50) == 1,
             "weaken_immune": g(51) == 1,
             "zombie_killer": g(52) == 1,
-            "warp_blocker": g(68) == 1,
-            "warp_immune": g(68) == 1,
+            "kamikaze": g(55) == 1 and g(58) == 2,
+            "warp_blocker": g(75) == 1,
+            "warp_immune": g(75) == 1,
             "barrier_break_prob": g(70),
             "curse_immune": g(79) == 1,
             "insanely_tough": g(80) == 1,
@@ -538,9 +815,19 @@ class OfficialDataParser:
             "mini_wave": g(94) == 1,
             "shield_pierce_prob": g(95),
             "colossus_slayer": g(97) == 1,
-            "behemoth_slayer": g(98) == 1,
-            "surge_counter": g(107) == 1,
+            "soul_strike": g(98) == 1,
+            "behemoth_slayer": g(105) == 1,
+            "behemoth_dodge_prob": g(106),
+            "behemoth_dodge_dur": g(107),
             "mini_surge": g(108) == 1,
+            "surge_counter": g(109) == 1,
+            "spirit_id": g(110),
+            "sage_slayer": g(111) == 1,
+            "metal_killer_pct": g(112),
+            "explosion_prob": g(113),
+            "explosion_start": g(114) // 4,
+            "explosion_width": g(115) // 4,
+            "explosion_immune": g(116) == 1,
             "self_traits": ["metal"] if g(43) == 1 else ["traitless"],
         }
 
@@ -647,10 +934,12 @@ class OfficialDataParser:
                     if len(parts) > 17 and int(parts[17]) == 1: traits.append("angel")
                     if len(parts) > 18 and int(parts[18]) == 1: traits.append("alien")
                     if len(parts) > 19 and int(parts[19]) == 1: traits.append("zombie")
-                    if len(parts) > 71 and int(parts[71]) == 1: traits.append("relic")
+                    if len(parts) > 71 and int(parts[71]) == 1: traits.append("eva_angel")
+                    if len(parts) > 72 and int(parts[72]) == 1: traits.append("relic")
                     if len(parts) > 93 and int(parts[93]) == 1: traits.append("aku")
                     if len(parts) > 94 and int(parts[94]) == 1: traits.append("colossus")
                     if len(parts) > 101 and int(parts[101]) == 1: traits.append("behemoth")
+                    if len(parts) > 104 and int(parts[104]) == 1: traits.append("sage")
 
                     ge = lambda idx, default=0: int(parts[idx]) if len(parts) > idx and parts[idx].lstrip("-").isdigit() else default
                     e_abilities = {
@@ -672,8 +961,12 @@ class OfficialDataParser:
                         "ld_start": ge(35),
                         "ld_range": ge(36),
                         "is_metal": "metal" in traits,
+                        "wave_immune": ge(37) == 1,
                         "wave_blocker": ge(38) == 1,
-                        "wave_immune": ge(39) == 1,
+                        "kb_immune": ge(39) == 1,
+                        "freeze_immune": ge(40) == 1,
+                        "slow_immune": ge(41) == 1,
+                        "weaken_immune": ge(42) == 1,
                         "burrow_count": ge(43),
                         "burrow_range": ge(44),
                         "revive_count": ge(45),
@@ -684,22 +977,34 @@ class OfficialDataParser:
                         "warp_dur": ge(66),
                         "warp_min": ge(67) // 4,
                         "warp_max": ge(68) // 4,
-                        "curse_prob": ge(72),
-                        "curse_dur": ge(73),
+                        "warp_blocker": ge(70) == 1,
+                        "warp_immune": ge(70) == 1,
+                        "curse_prob": ge(73),
+                        "curse_dur": ge(74),
                         "savage_blow_prob": ge(75),
                         "savage_blow_boost": ge(76, 200),
+                        "dodge_prob": ge(77),
+                        "dodge_dur": ge(78),
                         "toxic_prob": ge(79),
                         "toxic_hp_pct": ge(80),
                         "surge_prob": ge(81),
                         "surge_start": ge(82) // 4,
                         "surge_range": ge(83) // 4,
                         "surge_lvl": ge(84),
+                        "surge_immune": ge(85) == 1,
+                        "mini_wave": ge(86) == 1,
                         "shield_hp": ge(87),
                         "shield_regen_pct": ge(88),
-                        "mini_wave": ge(102) == 1,
-                        "mini_surge": ge(103) == 1,
-                        "surge_counter": ge(104) == 1,
-                        "curse_immune": ge(105) == 1,
+                        "death_surge_prob": ge(89),
+                        "death_surge_start": ge(90) // 4,
+                        "death_surge_range": ge(91) // 4,
+                        "death_surge_lvl": ge(92),
+                        "mini_surge": ge(102) == 1,
+                        "surge_counter": ge(103) == 1,
+                        "explosion_prob": ge(106),
+                        "explosion_start": ge(107) // 4,
+                        "explosion_width": ge(108) // 4,
+                        "explosion_immune": ge(109) == 1,
                     }
 
                     f1 = max(1, foreswing)
@@ -759,6 +1064,9 @@ class OfficialDataParser:
                         abilities=e_abilities,
                         attack_anim_len=self._get_maanim_attack_len(e_tex, max_foreswing),
                         attack_hits=e_attack_hits,
+                        hitbox_front=ge(7, 0),
+                        hitbox_back=ge(8, 320),
+                        render_scale=UNIT_RENDER_SCALE,
                     )
                 except (ValueError, IndexError):
                     continue
@@ -845,6 +1153,9 @@ class OfficialDataParser:
 
     def get_expanded_cats(self) -> Dict[str, CatData]:
         return dict(self.expanded_cats)
+
+    def get_final_form_cats(self) -> Dict[str, CatData]:
+        return dict(self.final_form_cats)
 
     def get_all_enemies(self) -> Dict[int, EnemyData]:
         return dict(self.enemies)

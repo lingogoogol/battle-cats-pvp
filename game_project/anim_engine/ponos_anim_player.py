@@ -319,11 +319,13 @@ class PonosMaanim:
                 if len(kf_parts) >= 4:
                     kf = KeyFrame(kf_parts[0], kf_parts[1], kf_parts[2], kf_parts[3])
                     track.keyframes.append(kf)
-                    loop_mult = track.loop if 0 < track.loop <= 4 else 1
-                    end_f = kf.frame * loop_mult
-                    if end_f > self.max_frame:
-                        self.max_frame = end_f
                 idx += 1
+            if track.keyframes:
+                s_f = track.keyframes[0].frame
+                e_f = track.keyframes[-1].frame
+                eff_end = (s_f + (e_f - s_f) * track.loop) if track.loop > 0 else e_f
+                if eff_end > self.max_frame:
+                    self.max_frame = eff_end
             self.tracks.append(track)
 
 class PonosAnimationPlayer:
@@ -405,15 +407,15 @@ class PonosAnimationPlayer:
                         elif mt == 2:
                             part.cur_cut_id = val
                         elif mt == 3:
-                            part.cur_z_depth = val * num_parts + part.index
+                            part.cur_z_depth = val
                         elif mt == 4:
-                            part.cur_x = part.x + val
+                            part.cur_x += val
                         elif mt == 5:
-                            part.cur_y = part.y + val
+                            part.cur_y += val
                         elif mt == 6:
-                            part.cur_pivot_x = part.pivot_x + val
+                            part.cur_pivot_x += val
                         elif mt == 7:
-                            part.cur_pivot_y = part.pivot_y + val
+                            part.cur_pivot_y += val
                         elif mt == 8:
                             part.cur_gsca = val
                         elif mt == 9:
@@ -421,7 +423,7 @@ class PonosAnimationPlayer:
                         elif mt == 10:
                             part.cur_scale_y = int(val * part.scale_y / su)
                         elif mt == 11:
-                            part.cur_rotation = part.rotation + val
+                            part.cur_rotation += val
                         elif mt == 12:
                             part.cur_alpha = int(val * part.alpha / alu)
                         elif mt == 13:

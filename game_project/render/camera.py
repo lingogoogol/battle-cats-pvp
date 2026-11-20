@@ -4,13 +4,14 @@ Supports keyboard panning, mouse drag, and auto-focus on frontline combat.
 """
 
 import random
-from ..core.constants import SCREEN_WIDTH, BATTLEFIELD_LENGTH
+from ..core.constants import SCREEN_WIDTH, BATTLEFIELD_LENGTH, BATTLE_WORLD_SCALE
 
 class Camera2D:
-    def __init__(self, viewport_width: int = SCREEN_WIDTH, world_width: int = BATTLEFIELD_LENGTH):
+    def __init__(self, viewport_width: int = SCREEN_WIDTH, world_width: int = BATTLEFIELD_LENGTH, world_scale: float = BATTLE_WORLD_SCALE):
         self.viewport_width = viewport_width
         self.world_width = world_width
-        self.max_offset_x = max(0, world_width - viewport_width)
+        self.world_scale = float(world_scale)
+        self.max_offset_x = max(0.0, world_width * self.world_scale - viewport_width)
         # In official Battle Cats, the camera initially focuses on the Player's Castle on the RIGHT
         self.offset_x = float(self.max_offset_x)
         self.is_dragging = False
@@ -36,22 +37,25 @@ class Camera2D:
             self.shake_dy = 0.0
 
     def world_to_screen_x(self, world_x: float) -> int:
-        return int(world_x - self.offset_x + self.shake_dx)
+        return int(world_x * self.world_scale - self.offset_x + self.shake_dx)
+
+    def world_to_screen_dx(self, world_dx: float) -> float:
+        return world_dx * self.world_scale
 
     def screen_to_world_x(self, screen_x: int) -> float:
-        return screen_x + self.offset_x
+        return (screen_x + self.offset_x) / self.world_scale
 
     def pan(self, dx: float):
         self.offset_x = max(0.0, min(float(self.max_offset_x), self.offset_x + dx))
 
     def snap_to_target_x(self, target_world_x: float):
         """Immediately centers camera on target_world_x without smoothing."""
-        desired_offset = target_world_x - (self.viewport_width / 2)
+        desired_offset = target_world_x * self.world_scale - (self.viewport_width / 2)
         self.offset_x = max(0.0, min(float(self.max_offset_x), desired_offset))
 
     def set_target_x(self, target_world_x: float):
         """Centers camera on target_world_x smoothly."""
-        desired_offset = target_world_x - (self.viewport_width / 2)
+        desired_offset = target_world_x * self.world_scale - (self.viewport_width / 2)
         desired_offset = max(0.0, min(float(self.max_offset_x), desired_offset))
         # Smooth interpolation
         self.offset_x += (desired_offset - self.offset_x) * 0.1

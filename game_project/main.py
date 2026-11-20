@@ -184,7 +184,7 @@ def run_game(
             local_team = net_session.local_team
             camera = Camera2D(world_width=sim.battlefield_length)
             if local_team == TEAM_ENEMY:
-                camera.set_target_x(120)
+                camera.set_target_x(700)
                 camera.offset_x = 0.0
             renderer = BattleRenderer(screen, camera)
             if debug:

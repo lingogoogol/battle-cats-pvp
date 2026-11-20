@@ -39,14 +39,15 @@ def run_verification():
     )
     renderer.process_visual_events(sim.consume_visual_events())
 
-    print("[*] Nyancombo check: Wallet money =", sim.wallet.money, "(Expected: 450 = 150 + 300)")
+    print("[*] Nyancombo check: Wallet money =", sim.wallet.money, "(Expected: 300 = 0 + 300)")
     print("[*] Nyancombo check: Worker level =", sim.wallet.level, "(Expected: 2 = 1 + 1)")
     print("[*] Treasure check: Cannon power =", sim.cannon_power, "(Expected: 1750 = 250 + 1500)")
-    print("[*] Treasure check: Max wallet capacity =", sim.wallet.max_money, "(Expected: 3500 = 500 + 3000)")
+    print("[*] Treasure check: Max wallet capacity =", sim.wallet.max_money, "(Expected: 3150 = 150 + 3000)")
 
-    assert sim.wallet.money == 450, f"Expected 450, got {sim.wallet.money}"
+    assert sim.wallet.money == 300, f"Expected 300, got {sim.wallet.money}"
     assert sim.wallet.level == 2, f"Expected 2, got {sim.wallet.level}"
     assert sim.cannon_power == 1750, f"Expected 1750, got {sim.cannon_power}"
+    assert sim.wallet.max_money == 3150, f"Expected 3150, got {sim.wallet.max_money}"
 
     # 2. Spawn combat units for visual showcase
     # Cat with Wave Blocker & Warp Blocker
